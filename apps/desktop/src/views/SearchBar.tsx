@@ -121,6 +121,21 @@ export function SearchBar({ onSelect }: Props) {
   );
 }
 
+function highlightSnippet(snippet: string): React.ReactNode[] {
+  const segments: React.ReactNode[] = [];
+  const re = /\*\*(.*?)\*\*/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let i = 0;
+  while ((m = re.exec(snippet)) !== null) {
+    if (m.index > last) segments.push(snippet.slice(last, m.index));
+    segments.push(<mark key={i++}>{m[1]}</mark>);
+    last = m.index + m[0].length;
+  }
+  if (last < snippet.length) segments.push(snippet.slice(last));
+  return segments;
+}
+
 function ResultRow({
   result,
   onSelect,
@@ -132,14 +147,7 @@ function ResultRow({
   return (
     <div style={styles.resultRow} onClick={() => onSelect(result.file)}>
       <div style={styles.resultName}>{name}</div>
-      {result.snippet && (
-        <div
-          style={styles.snippet}
-          dangerouslySetInnerHTML={{
-            __html: result.snippet.replace(/\*\*(.*?)\*\*/g, "<mark>$1</mark>"),
-          }}
-        />
-      )}
+      {result.snippet && <div style={styles.snippet}>{highlightSnippet(result.snippet)}</div>}
     </div>
   );
 }

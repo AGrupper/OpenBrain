@@ -8,6 +8,66 @@ interface UploadMetadata {
   mime: string;
 }
 
+export const EMBEDDING_DIMENSIONS = 1024;
+export const FILES_SELECT_WHITELIST = new Set([
+  "id",
+  "path",
+  "size",
+  "sha256",
+  "mime",
+  "folder",
+  "tags",
+  "updated_at",
+  "created_at",
+  "needs_embedding",
+  "needs_linking",
+  "needs_tagging",
+  "text_content",
+]);
+const FILES_MAX_LIMIT = 500;
+const FILES_BOOL_FILTERS = ["needs_linking", "needs_tagging", "needs_embedding"] as const;
+
+export function parseFilesQuery(searchParams: URLSearchParams): {
+  params: Record<string, string>;
+  error?: string;
+} {
+  const params: Record<string, string> = { order: "updated_at.desc" };
+
+  for (const key of FILES_BOOL_FILTERS) {
+    if (searchParams.get(key) === "true") params[key] = "eq.true";
+  }
+
+  const rawSelect = searchParams.get("select");
+  if (rawSelect) {
+    const cols = rawSelect
+      .split(",")
+      .map((c) => c.trim())
+      .filter(Boolean);
+    const bad = cols.filter((c) => !FILES_SELECT_WHITELIST.has(c));
+    if (bad.length) return { params, error: `Unknown select columns: ${bad.join(",")}` };
+    params.select = cols.join(",");
+  } else {
+    params.select = "*";
+  }
+
+  const rawLimit = searchParams.get("limit");
+  if (rawLimit !== null) {
+    const n = Number.parseInt(rawLimit, 10);
+    if (!Number.isFinite(n) || n <= 0) return { params, error: "limit must be a positive integer" };
+    params.limit = String(Math.min(n, FILES_MAX_LIMIT));
+  }
+
+  return { params };
+}
+
+export function isValidEmbedding(v: unknown): v is number[] {
+  if (!Array.isArray(v) || v.length !== EMBEDDING_DIMENSIONS) return false;
+  for (const x of v) {
+    if (typeof x !== "number" || !Number.isFinite(x)) return false;
+  }
+  return true;
+}
+
 export function readUploadHeaders(request: Request): UploadMetadata | null {
   const path = request.headers.get("X-File-Path");
   const sha256 = request.headers.get("X-File-Sha256");
@@ -86,11 +146,10 @@ export async function handleFiles(request: Request, env: Env, url: URL): Promise
   const sub = segments[1]; // e.g. "embedding"
 
   try {
-    // GET /files — list all files
+    // GET /files — list files with optional filters/limit/select
     if (method === "GET" && !fileId) {
-      const needsLinking = url.searchParams.get("needs_linking");
-      const params: Record<string, string> = { order: "updated_at.desc", select: "*" };
-      if (needsLinking === "true") params["needs_linking"] = "eq.true";
+      const { params, error } = parseFilesQuery(url.searchParams);
+      if (error) return new Response(error, { status: 400 });
       const rows = await db(env).query("files", params);
       return Response.json(rows);
     }
@@ -159,11 +218,18 @@ export async function handleFiles(request: Request, env: Env, url: URL): Promise
 
     // POST /files/:id/embedding — Friday posts the embedding vector
     if (method === "POST" && fileId && sub === "embedding") {
-      const body = (await request.json()) as { embedding: number[]; text_preview: string };
+      const body = (await request.json()) as { embedding?: unknown; text_preview?: unknown };
+      if (!isValidEmbedding(body.embedding)) {
+        return new Response(
+          `embedding must be an array of ${EMBEDDING_DIMENSIONS} finite numbers`,
+          { status: 400 },
+        );
+      }
+      const textPreview = typeof body.text_preview === "string" ? body.text_preview : "";
       await db(env).upsert("embeddings", {
         file_id: fileId,
         embedding: JSON.stringify(body.embedding),
-        text_preview: body.text_preview,
+        text_preview: textPreview,
         embedded_at: new Date().toISOString(),
       });
       await db(env).patch("files", fileId, { needs_embedding: false });

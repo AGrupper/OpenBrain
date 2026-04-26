@@ -9,6 +9,7 @@ import type { VaultFile } from "../../packages/shared/src/types";
 const API = process.env.OPENBRAIN_API_URL!;
 const TOKEN = process.env.OPENBRAIN_AUTH_TOKEN!;
 const MAX_FILES = parseInt(process.env.MAX_FILES_PER_RUN ?? "20");
+export const EMBEDDING_DIMENSIONS = 1024;
 
 const headers = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
 
@@ -65,10 +66,21 @@ async function embedText(text: string): Promise<number[]> {
         Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ model: "text-embedding-3-small", input: text }),
+      // dimensions forces the output to match the Supabase vector(1024) column
+      body: JSON.stringify({
+        model: "text-embedding-3-small",
+        input: text,
+        dimensions: EMBEDDING_DIMENSIONS,
+      }),
     });
     const data = (await res.json()) as { data: { embedding: number[] }[] };
-    return data.data[0].embedding;
+    const vec = data.data[0].embedding;
+    if (vec.length !== EMBEDDING_DIMENSIONS) {
+      throw new Error(
+        `OpenAI returned ${vec.length}-dim embedding, expected ${EMBEDDING_DIMENSIONS}`,
+      );
+    }
+    return vec;
   }
 
   throw new Error(`Unsupported EMBEDDING_PROVIDER: ${provider}`);
@@ -204,6 +216,18 @@ async function main() {
         }
         console.warn(`[linker] Proposal failed for (${title}, ${neighborTitle}):`, e);
       }
+    }
+
+    // 6. Mark done. Clear only after embedding succeeded and the neighbor loop completed —
+    // even if zero proposals were made, "no neighbors found" is a valid terminal state.
+    // Future files that embed will discover this file through their own neighbor scans.
+    try {
+      await apiFetch(`/files/${file.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ needs_linking: false }),
+      });
+    } catch (e) {
+      console.warn(`[linker] Failed to clear needs_linking for ${file.path}:`, e);
     }
   }
 

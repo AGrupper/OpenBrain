@@ -1,6 +1,35 @@
-# OpenBrain — Morning Setup (~20 minutes)
+# OpenBrain — Cloud Setup
 
-Good morning! The overnight build is done. Follow these steps to go from code to running app.
+Follow these steps to go from a working local repo to a running cloud app.
+
+---
+
+## Before cloud setup — local pre-flight
+
+Run these checks locally first. Do not proceed to cloud steps until all pass.
+
+```bash
+# From repo root:
+npm test
+npm run typecheck
+npm run lint
+npm run format:check
+```
+
+If cargo is available:
+
+```bash
+cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml
+cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets -- -D warnings
+```
+
+Manual check:
+
+- Start the desktop app (`npm run tauri:dev` inside `apps/desktop`)
+- Confirm the "Choose vault folder" button appears and clicking it opens a folder picker
+- Confirm selecting a folder starts sync without errors
+
+**Secrets:** Never paste API keys or tokens into chat. Set all secrets locally via environment variables or `wrangler secret put`.
 
 ---
 

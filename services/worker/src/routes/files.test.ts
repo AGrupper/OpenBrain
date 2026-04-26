@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach, vi, type Mock } from "vitest";
-import { handleFiles, readUploadHeaders } from "./files";
+import {
+  handleFiles,
+  readUploadHeaders,
+  parseFilesQuery,
+  isValidEmbedding,
+  EMBEDDING_DIMENSIONS,
+} from "./files";
 import type { Env } from "../index";
 
 function makeRequest(url: string, init?: RequestInit) {
@@ -143,6 +149,141 @@ describe("handleFiles — PUT /files/upload", () => {
       expect.objectContaining({ sha256: "deadbeef" }),
     );
     expect(fetchMock).toHaveBeenCalled();
+  });
+});
+
+describe("parseFilesQuery", () => {
+  it("defaults to select=* and order=updated_at.desc with no params", () => {
+    const { params, error } = parseFilesQuery(new URLSearchParams());
+    expect(error).toBeUndefined();
+    expect(params).toEqual({ order: "updated_at.desc", select: "*" });
+  });
+
+  it("translates needs_linking/needs_tagging/needs_embedding=true to eq.true", () => {
+    const sp = new URLSearchParams("needs_linking=true&needs_tagging=true&needs_embedding=true");
+    const { params } = parseFilesQuery(sp);
+    expect(params.needs_linking).toBe("eq.true");
+    expect(params.needs_tagging).toBe("eq.true");
+    expect(params.needs_embedding).toBe("eq.true");
+  });
+
+  it("ignores boolean filters when value is not 'true'", () => {
+    const { params } = parseFilesQuery(new URLSearchParams("needs_linking=false"));
+    expect(params.needs_linking).toBeUndefined();
+  });
+
+  it("clamps limit to FILES_MAX_LIMIT (500)", () => {
+    const { params } = parseFilesQuery(new URLSearchParams("limit=9999"));
+    expect(params.limit).toBe("500");
+  });
+
+  it("rejects non-positive limit", () => {
+    const { error } = parseFilesQuery(new URLSearchParams("limit=0"));
+    expect(error).toMatch(/limit/);
+  });
+
+  it("rejects non-numeric limit", () => {
+    const { error } = parseFilesQuery(new URLSearchParams("limit=abc"));
+    expect(error).toMatch(/limit/);
+  });
+
+  it("accepts whitelisted select columns", () => {
+    const { params, error } = parseFilesQuery(new URLSearchParams("select=folder,tags"));
+    expect(error).toBeUndefined();
+    expect(params.select).toBe("folder,tags");
+  });
+
+  it("rejects unknown select columns", () => {
+    const { error } = parseFilesQuery(new URLSearchParams("select=folder,evil_column"));
+    expect(error).toMatch(/Unknown select/);
+  });
+});
+
+describe("isValidEmbedding", () => {
+  it("accepts an array of 1024 finite numbers", () => {
+    const v = new Array(EMBEDDING_DIMENSIONS).fill(0.1);
+    expect(isValidEmbedding(v)).toBe(true);
+  });
+
+  it("rejects wrong-length arrays", () => {
+    expect(isValidEmbedding(new Array(1536).fill(0.1))).toBe(false);
+    expect(isValidEmbedding([])).toBe(false);
+  });
+
+  it("rejects arrays with non-numeric or non-finite entries", () => {
+    const bad = new Array(EMBEDDING_DIMENSIONS).fill(0.1);
+    bad[0] = "x";
+    expect(isValidEmbedding(bad)).toBe(false);
+    bad[0] = Number.NaN;
+    expect(isValidEmbedding(bad)).toBe(false);
+    bad[0] = Number.POSITIVE_INFINITY;
+    expect(isValidEmbedding(bad)).toBe(false);
+  });
+
+  it("rejects non-arrays", () => {
+    expect(isValidEmbedding(null)).toBe(false);
+    expect(isValidEmbedding({})).toBe(false);
+    expect(isValidEmbedding("abc")).toBe(false);
+  });
+});
+
+describe("handleFiles — GET /files filters", () => {
+  it("rejects unknown select columns with 400", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("[]", { status: 200 })),
+    );
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files?select=evil");
+    const res = await handleFiles(req, env, new URL(req.url));
+    expect(res.status).toBe(400);
+  });
+
+  it("forwards needs_tagging=true and limit to Supabase URL", async () => {
+    const fetchMock = vi.fn(async () => new Response("[]", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files?needs_tagging=true&limit=50");
+    await handleFiles(req, env, new URL(req.url));
+    const calls = fetchMock.mock.calls as unknown[][];
+    const calledUrl = String(calls[0]?.[0] ?? "");
+    expect(calledUrl).toContain("needs_tagging=eq.true");
+    expect(calledUrl).toContain("limit=50");
+  });
+});
+
+describe("handleFiles — POST /files/:id/embedding", () => {
+  it("rejects wrong-dimension embedding payloads with 400", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("[]", { status: 200 })),
+    );
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files/abc/embedding", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ embedding: new Array(1536).fill(0.1), text_preview: "x" }),
+    });
+    const res = await handleFiles(req, env, new URL(req.url));
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts a valid 1024-dim embedding", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("[]", { status: 200 })),
+    );
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files/abc/embedding", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        embedding: new Array(EMBEDDING_DIMENSIONS).fill(0.1),
+        text_preview: "x",
+      }),
+    });
+    const res = await handleFiles(req, env, new URL(req.url));
+    expect(res.status).toBe(204);
   });
 });
 
