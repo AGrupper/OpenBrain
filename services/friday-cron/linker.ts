@@ -3,6 +3,7 @@
  * Run: tsx linker.ts
  * Schedule via Openclaw: every hour (or however Friday's cron is configured)
  */
+import { fileURLToPath } from "node:url";
 import type { VaultFile } from "../../packages/shared/src/types";
 
 const API = process.env.OPENBRAIN_API_URL!;
@@ -11,10 +12,32 @@ const MAX_FILES = parseInt(process.env.MAX_FILES_PER_RUN ?? "20");
 
 const headers = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
 
+export class ApiError extends Error {
+  constructor(
+    public path: string,
+    public status: number,
+    public body: string,
+  ) {
+    super(`API ${path} failed ${status}: ${body}`);
+    this.name = "ApiError";
+  }
+}
+
 async function apiFetch(path: string, opts: RequestInit = {}) {
-  const res = await fetch(`${API}${path}`, { ...opts, headers: { ...headers, ...(opts.headers as Record<string, string> ?? {}) } });
-  if (!res.ok) throw new Error(`API ${path} failed ${res.status}: ${await res.text()}`);
+  const res = await fetch(`${API}${path}`, {
+    ...opts,
+    headers: { ...headers, ...((opts.headers as Record<string, string>) ?? {}) },
+  });
+  if (!res.ok) throw new ApiError(path, res.status, await res.text());
   return res.json();
+}
+
+// Postgres unique-violation SQLSTATE — surfaced by Supabase REST when a duplicate link
+// is proposed. Treated as a no-op rather than a failure.
+const PG_UNIQUE_VIOLATION = "23505";
+
+export function isDuplicateLinkError(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 409 && e.body.includes(PG_UNIQUE_VIOLATION);
 }
 
 // ── Embedding ────────────────────────────────────────────────────────────────
@@ -25,20 +48,26 @@ async function embedText(text: string): Promise<number[]> {
   if (provider === "voyage") {
     const res = await fetch("https://api.voyageai.com/v1/embeddings", {
       method: "POST",
-      headers: { Authorization: `Bearer ${process.env.VOYAGE_API_KEY}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${process.env.VOYAGE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({ model: "voyage-3", input: [text] }),
     });
-    const data = await res.json() as { data: { embedding: number[] }[] };
+    const data = (await res.json()) as { data: { embedding: number[] }[] };
     return data.data[0].embedding;
   }
 
   if (provider === "openai") {
     const res = await fetch("https://api.openai.com/v1/embeddings", {
       method: "POST",
-      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({ model: "text-embedding-3-small", input: text }),
     });
-    const data = await res.json() as { data: { embedding: number[] }[] };
+    const data = (await res.json()) as { data: { embedding: number[] }[] };
     return data.data[0].embedding;
   }
 
@@ -47,7 +76,12 @@ async function embedText(text: string): Promise<number[]> {
 
 // ── Reasoning ────────────────────────────────────────────────────────────────
 
-async function askFridayIfRelated(titleA: string, titleB: string, previewA: string, previewB: string): Promise<{ related: boolean; reason: string; confidence: number }> {
+async function askFridayIfRelated(
+  titleA: string,
+  titleB: string,
+  previewA: string,
+  previewB: string,
+): Promise<{ related: boolean; reason: string; confidence: number }> {
   const provider = process.env.FRIDAY_MODEL_PROVIDER ?? "anthropic";
   const model = process.env.FRIDAY_MODEL ?? "claude-opus-4-7";
 
@@ -76,21 +110,24 @@ Respond with JSON only:
         messages: [{ role: "user", content: prompt }],
       }),
     });
-    const data = await res.json() as { content: { text: string }[] };
+    const data = (await res.json()) as { content: { text: string }[] };
     return JSON.parse(data.content[0].text);
   }
 
   if (provider === "openai") {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         model,
         messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" },
       }),
     });
-    const data = await res.json() as { choices: { message: { content: string } }[] };
+    const data = (await res.json()) as { choices: { message: { content: string } }[] };
     return JSON.parse(data.choices[0].message.content);
   }
 
@@ -127,7 +164,9 @@ async function main() {
     }
 
     // 3. Find nearest neighbors
-    const neighbors: Array<{ file_id: string; path: string; confidence: number }> = await apiFetch(`/files/${file.id}/neighbors?k=10`);
+    const neighbors: Array<{ file_id: string; path: string; confidence: number }> = await apiFetch(
+      `/files/${file.id}/neighbors?k=10`,
+    );
 
     // 4. Evaluate each candidate pair
     for (const neighbor of neighbors) {
@@ -156,10 +195,14 @@ async function main() {
             reason: result.reason,
           }),
         });
-        console.log(`[linker] Proposed: "${title}" ↔ "${neighborTitle}" (${Math.round(result.confidence * 100)}%)`);
+        console.log(
+          `[linker] Proposed: "${title}" ↔ "${neighborTitle}" (${Math.round(result.confidence * 100)}%)`,
+        );
       } catch (e) {
-        // Duplicate link already exists — not an error
-        if (!String(e).includes("23505")) console.warn(`[linker] Proposal failed:`, e);
+        if (isDuplicateLinkError(e)) {
+          continue;
+        }
+        console.warn(`[linker] Proposal failed for (${title}, ${neighborTitle}):`, e);
       }
     }
   }
@@ -167,4 +210,10 @@ async function main() {
   console.log("[linker] Run complete.");
 }
 
-main().catch(err => { console.error(err); process.exit(1); });
+const isEntrypoint = process.argv[1] === fileURLToPath(import.meta.url);
+if (isEntrypoint) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

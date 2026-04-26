@@ -10,6 +10,22 @@
     "dev:worker": "npm -w services/worker run dev",
     "dev:desktop": "npm -w apps/desktop run tauri:dev",
     "typecheck": "npm -ws run typecheck --if-present",
-    "test": "npm -ws run test --if-present"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^9.0.0",
+    "globals": "^15.0.0",
+    "prettier": "^3.3.0",
+    "typescript": "^5.4.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^2.0.0"
   }
 }

@@ -39,12 +39,21 @@ export async function handleSearch(request: Request, env: Env, url: URL): Promis
 
   try {
     // Full-text search via Postgres FTS (fast, keyword-based)
-    const ftsResults = await db(env).rpc("search_files", {
+    const ftsResults = (await db(env).rpc("search_files", {
       query_text: query,
       result_limit: limit,
-    }) as Array<{ id: string; path: string; size: number; sha256: string; mime: string; updated_at: string; rank: number; snippet: string }>;
+    })) as Array<{
+      id: string;
+      path: string;
+      size: number;
+      sha256: string;
+      mime: string;
+      updated_at: string;
+      rank: number;
+      snippet: string;
+    }>;
 
-    const results: SearchResult[] = ftsResults.map(row => ({
+    const results: SearchResult[] = ftsResults.map((row) => ({
       file: {
         id: row.id,
         path: row.path,

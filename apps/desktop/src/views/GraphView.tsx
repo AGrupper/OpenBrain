@@ -21,15 +21,15 @@ export function GraphView({ files, onSelect }: Props) {
 
   useEffect(() => {
     api.links.list().then((approvedLinks: Link[]) => {
-      const linkedFileIds = new Set(approvedLinks.flatMap(l => [l.file_a_id, l.file_b_id]));
+      const linkedFileIds = new Set(approvedLinks.flatMap((l) => [l.file_a_id, l.file_b_id]));
       const nodes = files
-        .filter(f => linkedFileIds.has(f.id) || files.length < 200)
-        .map(f => ({
+        .filter((f) => linkedFileIds.has(f.id) || files.length < 200)
+        .map((f) => ({
           id: f.id,
           name: f.path.split("/").pop() ?? f.path,
           val: linkedFileIds.has(f.id) ? 2 : 1,
         }));
-      const links = approvedLinks.map(l => ({
+      const links = approvedLinks.map((l) => ({
         source: l.file_a_id,
         target: l.file_b_id,
         value: l.confidence,
@@ -42,7 +42,7 @@ export function GraphView({ files, onSelect }: Props) {
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const obs = new ResizeObserver(entries => {
+    const obs = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect;
       setDimensions({ width, height });
     });
@@ -51,7 +51,13 @@ export function GraphView({ files, onSelect }: Props) {
   }, []);
 
   const neighborIds = hoveredNodeId
-    ? new Set(graphData.links.flatMap(l => l.source === hoveredNodeId || l.target === hoveredNodeId ? [l.source as string, l.target as string] : []))
+    ? new Set(
+        graphData.links.flatMap((l) =>
+          l.source === hoveredNodeId || l.target === hoveredNodeId
+            ? [l.source as string, l.target as string]
+            : [],
+        ),
+      )
     : null;
 
   return (
@@ -61,21 +67,21 @@ export function GraphView({ files, onSelect }: Props) {
         height={dimensions.height}
         graphData={graphData}
         nodeLabel="name"
-        nodeColor={node => {
+        nodeColor={(node) => {
           if (!neighborIds) return "#4a9eff";
           if (node.id === hoveredNodeId) return "#fff";
           if (neighborIds.has(node.id as string)) return "#4ade80";
           return "#2a2a2a";
         }}
-        linkColor={link => {
+        linkColor={(link) => {
           if (!hoveredNodeId) return "#333";
           if (link.source === hoveredNodeId || link.target === hoveredNodeId) return "#4a9eff";
           return "#1a1a1a";
         }}
-        linkWidth={link => (link.value as number) * 2}
-        onNodeHover={node => setHoveredNodeId(node?.id as string ?? null)}
-        onNodeClick={node => {
-          const file = files.find(f => f.id === node.id);
+        linkWidth={(link) => (link.value as number) * 2}
+        onNodeHover={(node) => setHoveredNodeId((node?.id as string) ?? null)}
+        onNodeClick={(node) => {
+          const file = files.find((f) => f.id === node.id);
           if (file) onSelect(file);
         }}
         nodeCanvasObject={(node, ctx, globalScale) => {
@@ -87,8 +93,16 @@ export function GraphView({ files, onSelect }: Props) {
           // Node circle
           ctx.beginPath();
           ctx.arc(node.x!, node.y!, r, 0, 2 * Math.PI);
-          const isHighlighted = !neighborIds || node.id === hoveredNodeId || neighborIds.has(node.id as string);
-          ctx.fillStyle = node.id === hoveredNodeId ? "#fff" : neighborIds && neighborIds.has(node.id as string) ? "#4ade80" : isHighlighted ? "#4a9eff" : "#2a2a2a";
+          const isHighlighted =
+            !neighborIds || node.id === hoveredNodeId || neighborIds.has(node.id as string);
+          ctx.fillStyle =
+            node.id === hoveredNodeId
+              ? "#fff"
+              : neighborIds && neighborIds.has(node.id as string)
+                ? "#4ade80"
+                : isHighlighted
+                  ? "#4a9eff"
+                  : "#2a2a2a";
           ctx.fill();
 
           // Label — only when close enough
@@ -96,17 +110,33 @@ export function GraphView({ files, onSelect }: Props) {
             ctx.textAlign = "center";
             ctx.textBaseline = "top";
             ctx.fillStyle = isHighlighted ? "#ddd" : "#555";
-            ctx.fillText(label.length > 20 ? label.slice(0, 18) + "…" : label, node.x!, node.y! + r + 2);
+            ctx.fillText(
+              label.length > 20 ? label.slice(0, 18) + "…" : label,
+              node.x!,
+              node.y! + r + 2,
+            );
           }
         }}
         backgroundColor="#0d0d0d"
         linkDirectionalParticles={2}
-        linkDirectionalParticleWidth={link => (link.value as number) * 2}
+        linkDirectionalParticleWidth={(link) => (link.value as number) * 2}
       />
       {graphData.nodes.length === 0 && (
-        <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%,-50%)", color: "#555", textAlign: "center" }}>
-          No connections yet.<br />
-          <span style={{ fontSize: 12 }}>Friday will propose links as she processes your files.</span>
+        <div
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%,-50%)",
+            color: "#555",
+            textAlign: "center",
+          }}
+        >
+          No connections yet.
+          <br />
+          <span style={{ fontSize: 12 }}>
+            Friday will propose links as she processes your files.
+          </span>
         </div>
       )}
     </div>

@@ -137,7 +137,11 @@ fn relative_path(vault: &Path, path: &Path) -> String {
 }
 
 fn guess_mime(path: &Path) -> &'static str {
-    match path.extension().and_then(|e| e.to_str()) {
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase());
+    match ext.as_deref() {
         Some("md") => "text/markdown",
         Some("txt") => "text/plain",
         Some("pdf") => "application/pdf",
@@ -159,14 +163,13 @@ async fn upload_file(client: &Client, cfg: &SyncConfig, vault: &Path, path: &Pat
     let size = bytes.len() as u64;
     let mime = guess_mime(path);
 
-    // Request upload URL (token-based since Workers don't do presigned URLs natively)
-    let token_payload = serde_json::json!({ "path": rel, "sha256": sha, "size": size, "mime": mime });
-    let token = base64_url_encode(&serde_json::to_vec(&token_payload)?);
-
     client
-        .put(format!("{}/files/upload/{token}", cfg.api_url))
+        .put(format!("{}/files/upload", cfg.api_url))
         .header("Authorization", format!("Bearer {}", cfg.auth_token))
         .header("Content-Type", mime)
+        .header("X-File-Path", &rel)
+        .header("X-File-Sha256", &sha)
+        .header("X-File-Size", size.to_string())
         .body(bytes)
         .send()
         .await?
@@ -189,8 +192,13 @@ async fn pull_remote(client: &Client, cfg: &SyncConfig, vault: &Path) -> Result<
     for remote in resp {
         let local_path = vault.join(remote.path.replace('/', std::path::MAIN_SEPARATOR_STR));
         if local_path.exists() {
-            let local_sha = sha256_file(&local_path).unwrap_or_default();
-            if local_sha == remote.sha256 { continue; }
+            match sha256_file(&local_path) {
+                Ok(local_sha) if local_sha == remote.sha256 => continue,
+                Ok(_) => { /* differs — fall through to download */ }
+                Err(e) => {
+                    log::warn!("hash failed for {local_path:?}: {e}; re-downloading");
+                }
+            }
         }
 
         // Download remote version
@@ -227,13 +235,44 @@ async fn full_sync(client: &Client, cfg: &SyncConfig, vault: &Path) -> Result<()
     pull_remote(client, cfg, vault).await
 }
 
-fn base64_url_encode(input: &[u8]) -> String {
-    use std::fmt::Write;
-    let mut out = String::new();
-    let encoded = input.iter().fold(String::new(), |mut acc, b| {
-        let _ = write!(acc, "{b:02x}");
-        acc
-    });
-    out.push_str(&encoded);
-    out
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::TempDir;
+
+    #[test]
+    fn sha256_file_is_stable_for_known_input() {
+        let tmp = TempDir::new().unwrap();
+        let p = tmp.path().join("a.txt");
+        let mut f = std::fs::File::create(&p).unwrap();
+        f.write_all(b"hello").unwrap();
+        let sha = sha256_file(&p).unwrap();
+        // sha256("hello")
+        assert_eq!(sha, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+    }
+
+    #[test]
+    fn relative_path_normalizes_to_forward_slashes() {
+        let vault = Path::new("/tmp/vault");
+        let nested = Path::new("/tmp/vault/subdir/note.md");
+        assert_eq!(relative_path(vault, nested), "subdir/note.md");
+    }
+
+    #[test]
+    fn relative_path_falls_back_when_not_under_vault() {
+        let vault = Path::new("/tmp/vault");
+        let outside = Path::new("/elsewhere/note.md");
+        let s = relative_path(vault, outside);
+        assert_eq!(s, "/elsewhere/note.md".replace('\\', "/"));
+    }
+
+    #[test]
+    fn guess_mime_handles_known_and_unknown_extensions() {
+        assert_eq!(guess_mime(Path::new("note.md")), "text/markdown");
+        assert_eq!(guess_mime(Path::new("doc.pdf")), "application/pdf");
+        assert_eq!(guess_mime(Path::new("image.JPG")), "image/jpeg");
+        assert_eq!(guess_mime(Path::new("Photo.JPEG")), "image/jpeg");
+        assert_eq!(guess_mime(Path::new("noext")), "application/octet-stream");
+    }
 }

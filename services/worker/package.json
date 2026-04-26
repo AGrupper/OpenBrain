@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@openbrain/shared": "*"
@@ -13,6 +15,7 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240524.0",
     "typescript": "^5.4.0",
+    "vitest": "^2.0.0",
     "wrangler": "^3.60.0"
   }
 }

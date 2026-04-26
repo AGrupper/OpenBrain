@@ -15,9 +15,10 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api.files.list()
+    api.files
+      .list()
       .then(setFiles)
-      .catch(e => setError(String(e)))
+      .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
   }, []);
 
@@ -44,10 +45,16 @@ function Header({ view, onViewChange }: { view: ViewMode; onViewChange: (v: View
     <div style={styles.header}>
       <span style={styles.logo}>🧠 OpenBrain</span>
       <div style={styles.toggle}>
-        <button style={{ ...styles.toggleBtn, ...(view === "list" ? styles.toggleActive : {}) }} onClick={() => onViewChange("list")}>
+        <button
+          style={{ ...styles.toggleBtn, ...(view === "list" ? styles.toggleActive : {}) }}
+          onClick={() => onViewChange("list")}
+        >
           List
         </button>
-        <button style={{ ...styles.toggleBtn, ...(view === "graph" ? styles.toggleActive : {}) }} onClick={() => onViewChange("graph")}>
+        <button
+          style={{ ...styles.toggleBtn, ...(view === "graph" ? styles.toggleActive : {}) }}
+          onClick={() => onViewChange("graph")}
+        >
           Graph
         </button>
       </div>
@@ -56,10 +63,32 @@ function Header({ view, onViewChange }: { view: ViewMode; onViewChange: (v: View
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  header: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "12px 20px", background: "#161616", borderBottom: "1px solid #2a2a2a" },
+  header: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "12px 20px",
+    background: "#161616",
+    borderBottom: "1px solid #2a2a2a",
+  },
   logo: { fontSize: 18, fontWeight: 700, letterSpacing: -0.5 },
   toggle: { display: "flex", gap: 4, background: "#222", borderRadius: 8, padding: 3 },
-  toggleBtn: { padding: "5px 14px", borderRadius: 6, border: "none", background: "transparent", color: "#aaa", cursor: "pointer", fontSize: 13, fontWeight: 500 },
+  toggleBtn: {
+    padding: "5px 14px",
+    borderRadius: 6,
+    border: "none",
+    background: "transparent",
+    color: "#aaa",
+    cursor: "pointer",
+    fontSize: 13,
+    fontWeight: 500,
+  },
   toggleActive: { background: "#333", color: "#fff" },
-  center: { display: "flex", alignItems: "center", justifyContent: "center", height: "100%", color: "#888" },
+  center: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    height: "100%",
+    color: "#888",
+  },
 };

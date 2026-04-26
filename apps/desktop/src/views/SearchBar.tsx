@@ -17,7 +17,11 @@ export function SearchBar({ onSelect }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const search = useCallback(async (q: string, limit: number) => {
-    if (!q.trim()) { setResults([]); setTotal(0); return; }
+    if (!q.trim()) {
+      setResults([]);
+      setTotal(0);
+      return;
+    }
     setLoading(true);
     try {
       const { results: r, total: t } = await api.search.query(q, limit);
@@ -32,7 +36,12 @@ export function SearchBar({ onSelect }: Props) {
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!query.trim()) { setResults([]); setTotal(0); setOpen(false); return; }
+    if (!query.trim()) {
+      setResults([]);
+      setTotal(0);
+      setOpen(false);
+      return;
+    }
     debounceRef.current = setTimeout(() => {
       search(query, 5);
       setOpen(true);
@@ -63,17 +72,37 @@ export function SearchBar({ onSelect }: Props) {
           style={styles.input}
           placeholder="Search your vault…"
           value={query}
-          onChange={e => setQuery(e.target.value)}
+          onChange={(e) => setQuery(e.target.value)}
           onFocus={() => query && setOpen(true)}
         />
         {loading && <span style={styles.spinner}>⏳</span>}
-        {query && <button style={styles.clear} onClick={() => { setQuery(""); setResults([]); setOpen(false); inputRef.current?.focus(); }}>✕</button>}
+        {query && (
+          <button
+            style={styles.clear}
+            onClick={() => {
+              setQuery("");
+              setResults([]);
+              setOpen(false);
+              inputRef.current?.focus();
+            }}
+          >
+            ✕
+          </button>
+        )}
       </div>
 
       {open && results.length > 0 && (
         <div style={styles.dropdown}>
-          {results.map(r => (
-            <ResultRow key={r.file.id} result={r} onSelect={f => { onSelect(f); setOpen(false); setQuery(""); }} />
+          {results.map((r) => (
+            <ResultRow
+              key={r.file.id}
+              result={r}
+              onSelect={(f) => {
+                onSelect(f);
+                setOpen(false);
+                setQuery("");
+              }}
+            />
           ))}
           {!showAll && total > 5 && (
             <button style={styles.showAll} onClick={handleShowAll}>
@@ -92,29 +121,88 @@ export function SearchBar({ onSelect }: Props) {
   );
 }
 
-function ResultRow({ result, onSelect }: { result: SearchResult; onSelect: (f: VaultFile) => void }) {
+function ResultRow({
+  result,
+  onSelect,
+}: {
+  result: SearchResult;
+  onSelect: (f: VaultFile) => void;
+}) {
   const name = result.file.path.split("/").pop() ?? result.file.path;
   return (
     <div style={styles.resultRow} onClick={() => onSelect(result.file)}>
       <div style={styles.resultName}>{name}</div>
       {result.snippet && (
-        <div style={styles.snippet} dangerouslySetInnerHTML={{ __html: result.snippet.replace(/\*\*(.*?)\*\*/g, "<mark>$1</mark>") }} />
+        <div
+          style={styles.snippet}
+          dangerouslySetInnerHTML={{
+            __html: result.snippet.replace(/\*\*(.*?)\*\*/g, "<mark>$1</mark>"),
+          }}
+        />
       )}
     </div>
   );
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  wrapper: { position: "relative", padding: "8px 16px", background: "#111", borderBottom: "1px solid #2a2a2a" },
-  inputRow: { display: "flex", alignItems: "center", background: "#1a1a1a", borderRadius: 8, padding: "6px 12px", gap: 8 },
+  wrapper: {
+    position: "relative",
+    padding: "8px 16px",
+    background: "#111",
+    borderBottom: "1px solid #2a2a2a",
+  },
+  inputRow: {
+    display: "flex",
+    alignItems: "center",
+    background: "#1a1a1a",
+    borderRadius: 8,
+    padding: "6px 12px",
+    gap: 8,
+  },
   icon: { fontSize: 14, opacity: 0.5 },
-  input: { flex: 1, background: "transparent", border: "none", outline: "none", color: "#e8e8e8", fontSize: 14 },
+  input: {
+    flex: 1,
+    background: "transparent",
+    border: "none",
+    outline: "none",
+    color: "#e8e8e8",
+    fontSize: 14,
+  },
   spinner: { fontSize: 12, opacity: 0.6 },
-  clear: { background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: 13, padding: "0 2px" },
-  dropdown: { position: "absolute", top: "100%", left: 16, right: 16, background: "#1a1a1a", borderRadius: 8, border: "1px solid #2a2a2a", zIndex: 100, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,0.4)" },
+  clear: {
+    background: "none",
+    border: "none",
+    color: "#666",
+    cursor: "pointer",
+    fontSize: 13,
+    padding: "0 2px",
+  },
+  dropdown: {
+    position: "absolute",
+    top: "100%",
+    left: 16,
+    right: 16,
+    background: "#1a1a1a",
+    borderRadius: 8,
+    border: "1px solid #2a2a2a",
+    zIndex: 100,
+    overflow: "hidden",
+    boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+  },
   resultRow: { padding: "10px 14px", cursor: "pointer", borderBottom: "1px solid #222" },
   resultName: { fontSize: 13, fontWeight: 600, marginBottom: 2 },
   snippet: { fontSize: 12, color: "#888", lineHeight: 1.5 },
-  showAll: { display: "block", width: "100%", padding: "10px 14px", background: "transparent", border: "none", borderTop: "1px solid #222", color: "#4a9eff", cursor: "pointer", fontSize: 13, textAlign: "left" },
+  showAll: {
+    display: "block",
+    width: "100%",
+    padding: "10px 14px",
+    background: "transparent",
+    border: "none",
+    borderTop: "1px solid #222",
+    color: "#4a9eff",
+    cursor: "pointer",
+    fontSize: 13,
+    textAlign: "left",
+  },
   noResults: { padding: "12px 14px", color: "#555", fontSize: 13 },
 };

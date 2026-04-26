@@ -19,7 +19,7 @@ export async function handleTelegram(request: Request, env: Env): Promise<Respon
 
   if (request.method !== "POST") return new Response("OK", { status: 200 });
 
-  const update = await request.json() as TelegramUpdate;
+  const update = (await request.json()) as TelegramUpdate;
   const cb = update.callback_query;
   if (!cb?.data) return new Response("OK");
 
@@ -48,7 +48,7 @@ export async function handleTelegram(request: Request, env: Env): Promise<Respon
     const linkRes = await fetch(`${base}/rest/v1/links?id=eq.${linkId}&select=confidence`, {
       headers: { apikey: key, Authorization: `Bearer ${key}` },
     });
-    const links = await linkRes.json() as { confidence: number }[];
+    const links = (await linkRes.json()) as { confidence: number }[];
     if (links[0]?.confidence >= 0.85) {
       await fetch(`${base}/rest/v1/rpc/increment_trust`, {
         method: "POST",

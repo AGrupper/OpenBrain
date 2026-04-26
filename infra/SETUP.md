@@ -11,6 +11,7 @@ Tauri requires the MSVC C++ compiler. Open **Visual Studio Installer** → find 
 This adds `cl.exe` and `msvcrt.lib` which Rust needs to compile the desktop app.
 
 After installing, run once in a VS Developer Command Prompt (or a new terminal) to confirm:
+
 ```
 cl /?
 ```
@@ -55,9 +56,11 @@ cl /?
 ## Step 4 — Choose your auth token (30 sec)
 
 Pick a long random string — this is the shared secret between the app and Worker:
+
 ```
 openssl rand -hex 32
 ```
+
 Save it as `OPENBRAIN_AUTH_TOKEN`.
 
 ---
@@ -84,9 +87,11 @@ You'll get a Worker URL like `https://openbrain-worker.your-name.workers.dev`
 ## Step 6 — Register the Telegram webhook (30 sec)
 
 Replace placeholders and run in your browser or curl:
+
 ```
 https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook?url=https://openbrain-worker.your-name.workers.dev/telegram/<TELEGRAM_BOT_TOKEN>
 ```
+
 Expected response: `{"ok":true,"result":true,...}`
 
 ---
@@ -116,6 +121,7 @@ cp .env.example .env
 ```
 
 Tell Friday (via Telegram or Openclaw) to run this hourly:
+
 ```
 cd /path/to/OpenBrain/services/friday-cron && source .env && npm run link && npm run tag
 ```
@@ -140,22 +146,22 @@ npm run tauri:build
 
 After setup, verify each phase:
 
-| Phase | Test |
-|---|---|
-| Sync | Drop a .md file in your vault folder → confirm it appears in the app within 60s |
-| Search | Type a word from one of your files in the search bar → see it appear |
-| Linking | Wait 1 hour → check Telegram for a link proposal from Friday |
-| Graph | Switch to Graph view → see nodes and edges |
-| Tagging | Check a file → verify Friday set a folder and tags |
+| Phase   | Test                                                                            |
+| ------- | ------------------------------------------------------------------------------- |
+| Sync    | Drop a .md file in your vault folder → confirm it appears in the app within 60s |
+| Search  | Type a word from one of your files in the search bar → see it appear            |
+| Linking | Wait 1 hour → check Telegram for a link proposal from Friday                    |
+| Graph   | Switch to Graph view → see nodes and edges                                      |
+| Tagging | Check a file → verify Friday set a folder and tags                              |
 
 ---
 
 ## Cost estimate (steady state)
 
-| Service | Cost |
-|---|---|
-| Cloudflare R2 (50 GB) | ~$0.75/month |
-| Supabase free tier | $0 |
-| Cloudflare Workers free tier | $0 |
-| AI usage (Friday's keys) | Already covered |
-| **Total** | **~$1/month** |
+| Service                      | Cost            |
+| ---------------------------- | --------------- |
+| Cloudflare R2 (50 GB)        | ~$0.75/month    |
+| Supabase free tier           | $0              |
+| Cloudflare Workers free tier | $0              |
+| AI usage (Friday's keys)     | Already covered |
+| **Total**                    | **~$1/month**   |

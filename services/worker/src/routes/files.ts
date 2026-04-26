@@ -1,5 +1,23 @@
 import type { Env } from "../index";
-import type { VaultFile, UploadUrlRequest, UploadUrlResponse } from "@openbrain/shared";
+import type { VaultFile } from "@openbrain/shared";
+
+interface UploadMetadata {
+  path: string;
+  sha256: string;
+  size: number;
+  mime: string;
+}
+
+export function readUploadHeaders(request: Request): UploadMetadata | null {
+  const path = request.headers.get("X-File-Path");
+  const sha256 = request.headers.get("X-File-Sha256");
+  const sizeStr = request.headers.get("X-File-Size");
+  const mime = request.headers.get("Content-Type") ?? "application/octet-stream";
+  if (!path || !sha256 || !sizeStr) return null;
+  const size = Number.parseInt(sizeStr, 10);
+  if (!Number.isFinite(size) || size < 0) return null;
+  return { path, sha256, size, mime };
+}
 
 function db(env: Env) {
   const base = env.SUPABASE_URL;
@@ -60,7 +78,10 @@ function db(env: Env) {
 
 export async function handleFiles(request: Request, env: Env, url: URL): Promise<Response> {
   const { method } = request;
-  const segments = url.pathname.replace(/^\/files/, "").split("/").filter(Boolean);
+  const segments = url.pathname
+    .replace(/^\/files/, "")
+    .split("/")
+    .filter(Boolean);
   const fileId = segments[0];
   const sub = segments[1]; // e.g. "embedding"
 
@@ -76,14 +97,19 @@ export async function handleFiles(request: Request, env: Env, url: URL): Promise
 
     // GET /files/:id — get single file metadata
     if (method === "GET" && fileId && !sub) {
-      const rows = await db(env).query("files", { id: `eq.${fileId}`, select: "*" }) as VaultFile[];
+      const rows = (await db(env).query("files", {
+        id: `eq.${fileId}`,
+        select: "*",
+      })) as VaultFile[];
       if (!rows.length) return new Response("Not found", { status: 404 });
       return Response.json(rows[0]);
     }
 
     // GET /files/:id/download — get a presigned R2 download URL
     if (method === "GET" && fileId && sub === "download") {
-      const rows = await db(env).query("files", { id: `eq.${fileId}`, select: "path" }) as { path: string }[];
+      const rows = (await db(env).query("files", { id: `eq.${fileId}`, select: "path" })) as {
+        path: string;
+      }[];
       if (!rows.length) return new Response("Not found", { status: 404 });
       const obj = await env.VAULT_BUCKET.get(rows[0].path);
       if (!obj) return new Response("Object not in R2", { status: 404 });
@@ -100,28 +126,25 @@ export async function handleFiles(request: Request, env: Env, url: URL): Promise
       return Response.json(rows);
     }
 
-    // POST /files/upload-url — request a presigned R2 upload URL
-    if (method === "POST" && fileId === "upload-url") {
-      const body = await request.json() as UploadUrlRequest;
-      // R2 doesn't support presigned URLs in Workers yet; we accept the upload directly
-      // Instead, return the direct upload endpoint
-      const uploadToken = btoa(JSON.stringify({ path: body.path, sha256: body.sha256, size: body.size, mime: body.mime }));
-      const response: UploadUrlResponse = {
-        upload_url: `${url.origin}/files/upload/${uploadToken}`,
-        file_id: "", // will be set after upload
-      };
-      return Response.json(response);
-    }
+    // PUT /files/upload — receive file blob with metadata in headers, store in R2, upsert row.
+    // Headers: X-File-Path, X-File-Sha256, X-File-Size; Content-Type carries MIME.
+    if (method === "PUT" && fileId === "upload" && !sub) {
+      const meta = readUploadHeaders(request);
+      if (!meta) return new Response("Missing required X-File-* headers", { status: 400 });
 
-    // PUT /files/upload/:token — receive file blob, store in R2, upsert metadata
-    if (method === "PUT" && fileId === "upload" && sub) {
-      const meta = JSON.parse(atob(sub)) as UploadUrlRequest;
       const blob = await request.arrayBuffer();
+      if (blob.byteLength !== meta.size) {
+        return new Response(
+          `Body size ${blob.byteLength} does not match X-File-Size ${meta.size}`,
+          { status: 400 },
+        );
+      }
+
       await env.VAULT_BUCKET.put(meta.path, blob, {
         httpMetadata: { contentType: meta.mime },
         sha256: meta.sha256,
       });
-      const rows = await db(env).upsert("files", {
+      const rows = (await db(env).upsert("files", {
         path: meta.path,
         size: meta.size,
         sha256: meta.sha256,
@@ -130,13 +153,13 @@ export async function handleFiles(request: Request, env: Env, url: URL): Promise
         needs_embedding: true,
         needs_linking: true,
         needs_tagging: true,
-      }) as VaultFile[];
+      })) as VaultFile[];
       return Response.json(rows[0], { status: 201 });
     }
 
     // POST /files/:id/embedding — Friday posts the embedding vector
     if (method === "POST" && fileId && sub === "embedding") {
-      const body = await request.json() as { embedding: number[]; text_preview: string };
+      const body = (await request.json()) as { embedding: number[]; text_preview: string };
       await db(env).upsert("embeddings", {
         file_id: fileId,
         embedding: JSON.stringify(body.embedding),
@@ -149,14 +172,19 @@ export async function handleFiles(request: Request, env: Env, url: URL): Promise
 
     // PATCH /files/:id — update path, folder, tags, etc.
     if (method === "PATCH" && fileId && !sub) {
-      const body = await request.json() as Partial<VaultFile>;
-      const rows = await db(env).patch("files", fileId, { ...body, updated_at: new Date().toISOString() });
+      const body = (await request.json()) as Partial<VaultFile>;
+      const rows = await db(env).patch("files", fileId, {
+        ...body,
+        updated_at: new Date().toISOString(),
+      });
       return Response.json(rows);
     }
 
     // DELETE /files/:id — remove from R2 + DB
     if (method === "DELETE" && fileId && !sub) {
-      const rows = await db(env).query("files", { id: `eq.${fileId}`, select: "path" }) as { path: string }[];
+      const rows = (await db(env).query("files", { id: `eq.${fileId}`, select: "path" })) as {
+        path: string;
+      }[];
       if (rows.length) await env.VAULT_BUCKET.delete(rows[0].path);
       await db(env).delete("files", fileId);
       return new Response(null, { status: 204 });

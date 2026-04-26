@@ -14,8 +14,11 @@ create table if not exists files (
   needs_embedding   boolean not null default true,
   needs_linking     boolean not null default true,
   needs_tagging     boolean not null default true,
+  tags              text[] not null default '{}',
   text_content      text
 );
+
+create index if not exists files_tags_gin on files using gin (tags);
 
 create index if not exists files_needs_embedding on files (needs_embedding) where needs_embedding = true;
 create index if not exists files_needs_linking on files (needs_linking) where needs_linking = true;

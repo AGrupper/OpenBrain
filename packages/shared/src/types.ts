@@ -58,18 +58,6 @@ export interface SyncState {
 }
 
 // API request/response shapes
-export interface UploadUrlRequest {
-  path: string;
-  sha256: string;
-  size: number;
-  mime: string;
-}
-
-export interface UploadUrlResponse {
-  upload_url: string;
-  file_id: string;
-}
-
 export interface SearchRequest {
   query: string;
   limit?: number;

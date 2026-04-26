@@ -6,7 +6,9 @@
   "scripts": {
     "link": "tsx linker.ts",
     "tag": "tsx tagger.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@openbrain/shared": "*",
@@ -16,6 +18,7 @@
     "@types/node": "^20.0.0",
     "@types/node-telegram-bot-api": "^0.64.7",
     "tsx": "^4.15.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "vitest": "^2.0.0"
   }
 }

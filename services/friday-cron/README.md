@@ -19,10 +19,10 @@ Scripts Friday runs on an hourly schedule to keep OpenBrain linked, tagged, and 
 
 ## What each script does
 
-| Script | Purpose |
-|--------|---------|
+| Script      | Purpose                                                                                                |
+| ----------- | ------------------------------------------------------------------------------------------------------ |
 | `linker.ts` | Embeds new files, finds nearest neighbors, asks Friday if they're related, proposes links via Telegram |
-| `tagger.ts` | Asks Friday to suggest a folder path and tags for unorganized files |
+| `tagger.ts` | Asks Friday to suggest a folder path and tags for unorganized files                                    |
 
 ## Trust threshold
 
@@ -32,6 +32,7 @@ Loose links (65–85%) always go through Telegram.
 ## Providing corrections
 
 When Friday puts a file in the wrong folder or adds wrong tags:
+
 1. Move/fix it in the app
 2. The app automatically logs the correction via `POST /corrections`
 3. Next time tagger.ts runs, it includes your recent corrections in the prompt
@@ -39,6 +40,7 @@ When Friday puts a file in the wrong folder or adds wrong tags:
 ## Embedding providers
 
 Set `EMBEDDING_PROVIDER` in `.env`:
+
 - `voyage` — Anthropic-recommended, best quality. Needs `VOYAGE_API_KEY`
 - `openai` — Good alternative. Needs `OPENAI_API_KEY`
 

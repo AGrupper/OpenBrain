@@ -1,0 +1,8 @@
+node_modules
+dist
+target
+.wrangler
+package-lock.json
+apps/desktop/src-tauri/target
+apps/desktop/src-tauri/Cargo.lock
+infra/supabase/migrations

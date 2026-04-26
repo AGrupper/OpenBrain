@@ -13,13 +13,21 @@ async function get<T>(path: string, params?: Record<string, string>): Promise<T>
 }
 
 async function post<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { method: "POST", headers: h, body: JSON.stringify(body) });
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: h,
+    body: JSON.stringify(body),
+  });
   if (!res.ok) throw new Error(`POST ${path} failed: ${res.status}`);
   return res.json();
 }
 
 async function patch<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { method: "PATCH", headers: h, body: JSON.stringify(body) });
+  const res = await fetch(`${BASE}${path}`, {
+    method: "PATCH",
+    headers: h,
+    body: JSON.stringify(body),
+  });
   if (!res.ok) throw new Error(`PATCH ${path} failed: ${res.status}`);
   return res.json();
 }
@@ -32,7 +40,8 @@ export const api = {
     patch: (id: string, body: Partial<VaultFile>) => patch<VaultFile>(`/files/${id}`, body),
   },
   search: {
-    query: (q: string, limit = 5) => get<{ results: SearchResult[]; total: number }>("/search", { q, limit: String(limit) }),
+    query: (q: string, limit = 5) =>
+      get<{ results: SearchResult[]; total: number }>("/search", { q, limit: String(limit) }),
   },
   links: {
     list: () => get<Link[]>("/links", { status: "approved" }),

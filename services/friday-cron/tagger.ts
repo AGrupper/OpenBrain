@@ -3,6 +3,7 @@
  * Run: tsx tagger.ts
  * Schedule via Openclaw: every hour alongside linker.ts
  */
+import { fileURLToPath } from "node:url";
 import type { VaultFile } from "../../packages/shared/src/types";
 
 const API = process.env.OPENBRAIN_API_URL!;
@@ -14,7 +15,10 @@ const MODEL = process.env.FRIDAY_MODEL ?? "claude-opus-4-7";
 const headers = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
 
 async function apiFetch(path: string, opts: RequestInit = {}) {
-  const res = await fetch(`${API}${path}`, { ...opts, headers: { ...headers, ...(opts.headers as Record<string, string> ?? {}) } });
+  const res = await fetch(`${API}${path}`, {
+    ...opts,
+    headers: { ...headers, ...((opts.headers as Record<string, string>) ?? {}) },
+  });
   if (!res.ok) throw new Error(`API ${path} failed ${res.status}: ${await res.text()}`);
   if (res.status === 204) return null;
   return res.json();
@@ -24,9 +28,15 @@ async function getRecentCorrections(): Promise<string> {
   // Fetch last 20 corrections to give Friday context about your preferences
   const res = await fetch(`${API}/corrections?limit=20`, { headers });
   if (!res.ok) return "";
-  const corrections = await res.json() as Array<{ field: string; old_value: string; new_value: string }>;
+  const corrections = (await res.json()) as Array<{
+    field: string;
+    old_value: string;
+    new_value: string;
+  }>;
   if (!corrections.length) return "";
-  const lines = corrections.map(c => `- Changed ${c.field} from "${c.old_value}" to "${c.new_value}"`);
+  const lines = corrections.map(
+    (c) => `- Changed ${c.field} from "${c.old_value}" to "${c.new_value}"`,
+  );
   return `\nRecent corrections to learn from:\n${lines.join("\n")}\n`;
 }
 
@@ -34,7 +44,7 @@ async function askFridayToOrganize(
   filePath: string,
   existingFolders: string[],
   existingTags: string[],
-  corrections: string
+  corrections: string,
 ): Promise<{ folder: string; tags: string[] }> {
   const filename = filePath.split("/").pop() ?? filePath;
   const folderList = existingFolders.slice(0, 30).join(", ");
@@ -68,21 +78,24 @@ Respond with JSON only:
         messages: [{ role: "user", content: prompt }],
       }),
     });
-    const data = await res.json() as { content: { text: string }[] };
+    const data = (await res.json()) as { content: { text: string }[] };
     return JSON.parse(data.content[0].text);
   }
 
   if (MODEL_PROVIDER === "openai") {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}`, "Content-Type": "application/json" },
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
+      },
       body: JSON.stringify({
         model: MODEL,
         messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" },
       }),
     });
-    const data = await res.json() as { choices: { message: { content: string } }[] };
+    const data = (await res.json()) as { choices: { message: { content: string } }[] };
     return JSON.parse(data.choices[0].message.content);
   }
 
@@ -100,15 +113,20 @@ async function main() {
 
   // Gather existing folders + tags for context
   const allFiles: VaultFile[] = await apiFetch("/files?select=folder,tags&limit=500");
-  const existingFolders = [...new Set(allFiles.map(f => f.folder).filter(Boolean) as string[])];
-  const existingTags = [...new Set(allFiles.flatMap(f => f.tags ?? []))];
+  const existingFolders = [...new Set(allFiles.map((f) => f.folder).filter(Boolean) as string[])];
+  const existingTags = [...new Set(allFiles.flatMap((f) => f.tags ?? []))];
   const corrections = await getRecentCorrections();
 
   console.log(`[tagger] Processing ${files.length} files`);
 
   for (const file of files) {
     try {
-      const suggestion = await askFridayToOrganize(file.path, existingFolders, existingTags, corrections);
+      const suggestion = await askFridayToOrganize(
+        file.path,
+        existingFolders,
+        existingTags,
+        corrections,
+      );
 
       await apiFetch(`/files/${file.id}`, {
         method: "PATCH",
@@ -119,13 +137,17 @@ async function main() {
         }),
       });
 
-      console.log(`[tagger] Tagged "${file.path.split("/").pop()}" → folder: ${suggestion.folder}, tags: ${suggestion.tags.join(", ")}`);
+      console.log(
+        `[tagger] Tagged "${file.path.split("/").pop()}" → folder: ${suggestion.folder}, tags: ${suggestion.tags.join(", ")}`,
+      );
 
       // Add new folder/tags to our local cache for subsequent files
       if (suggestion.folder && !existingFolders.includes(suggestion.folder)) {
         existingFolders.push(suggestion.folder);
       }
-      suggestion.tags.forEach(t => { if (!existingTags.includes(t)) existingTags.push(t); });
+      suggestion.tags.forEach((t) => {
+        if (!existingTags.includes(t)) existingTags.push(t);
+      });
     } catch (e) {
       console.warn(`[tagger] Failed for ${file.path}:`, e);
     }
@@ -134,4 +156,10 @@ async function main() {
   console.log("[tagger] Run complete.");
 }
 
-main().catch(err => { console.error(err); process.exit(1); });
+const isEntrypoint = process.argv[1] === fileURLToPath(import.meta.url);
+if (isEntrypoint) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

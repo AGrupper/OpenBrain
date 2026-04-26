@@ -59,7 +59,10 @@ function db(env: Env) {
 
 export async function handleLinks(request: Request, env: Env, url: URL): Promise<Response> {
   const { method } = request;
-  const segments = url.pathname.replace(/^\/links/, "").split("/").filter(Boolean);
+  const segments = url.pathname
+    .replace(/^\/links/, "")
+    .split("/")
+    .filter(Boolean);
   const linkId = segments[0];
   const sub = segments[1];
 
@@ -77,7 +80,7 @@ export async function handleLinks(request: Request, env: Env, url: URL): Promise
 
     // POST /links/proposals — Friday creates a new proposed link
     if (method === "POST" && linkId === "proposals" && !sub) {
-      const body = await request.json() as {
+      const body = (await request.json()) as {
         file_a_id: string;
         file_b_id: string;
         confidence: number;
@@ -85,7 +88,10 @@ export async function handleLinks(request: Request, env: Env, url: URL): Promise
       };
 
       // Check trust threshold — auto-approve obvious links if trust is established
-      const trustRows = await db(env).query("trust_metrics", { id: "eq.1", select: "obvious_links_silent" }) as { obvious_links_silent: boolean }[];
+      const trustRows = (await db(env).query("trust_metrics", {
+        id: "eq.1",
+        select: "obvious_links_silent",
+      })) as { obvious_links_silent: boolean }[];
       const silentMode = trustRows[0]?.obvious_links_silent ?? false;
       const isObvious = body.confidence >= 0.85;
 
@@ -94,14 +100,14 @@ export async function handleLinks(request: Request, env: Env, url: URL): Promise
         status = "auto_approved";
       }
 
-      const rows = await db(env).upsert("links", {
+      const rows = (await db(env).upsert("links", {
         file_a_id: body.file_a_id,
         file_b_id: body.file_b_id,
         confidence: body.confidence,
         reason: body.reason,
         status,
         updated_at: new Date().toISOString(),
-      }) as Link[];
+      })) as Link[];
 
       const link = rows[0];
 
@@ -115,7 +121,10 @@ export async function handleLinks(request: Request, env: Env, url: URL): Promise
 
     // PATCH /links/:id — Friday or Telegram webhook updates status
     if (method === "PATCH" && linkId && !sub) {
-      const body = await request.json() as { status: Link["status"]; telegram_message_id?: number };
+      const body = (await request.json()) as {
+        status: Link["status"];
+        telegram_message_id?: number;
+      };
       const rows = await db(env).patch("links", linkId, {
         ...body,
         updated_at: new Date().toISOString(),
@@ -123,7 +132,10 @@ export async function handleLinks(request: Request, env: Env, url: URL): Promise
 
       // Update trust metrics if an obvious link was approved
       if (body.status === "approved") {
-        const linkRows = await db(env).query("links", { id: `eq.${linkId}`, select: "confidence" }) as { confidence: number }[];
+        const linkRows = (await db(env).query("links", {
+          id: `eq.${linkId}`,
+          select: "confidence",
+        })) as { confidence: number }[];
         if (linkRows[0]?.confidence >= 0.85) {
           await db(env).rpc("increment_trust", {});
         }
@@ -157,10 +169,10 @@ async function sendTelegramApproval(env: Env, link: Link): Promise<void> {
   const [rowsA, rowsB] = await Promise.all([
     fetch(`${base}/rest/v1/files?id=eq.${link.file_a_id}&select=path`, {
       headers: { apikey: key, Authorization: `Bearer ${key}` },
-    }).then(r => r.json()) as Promise<{ path: string }[]>,
+    }).then((r) => r.json()) as Promise<{ path: string }[]>,
     fetch(`${base}/rest/v1/files?id=eq.${link.file_b_id}&select=path`, {
       headers: { apikey: key, Authorization: `Bearer ${key}` },
-    }).then(r => r.json()) as Promise<{ path: string }[]>,
+    }).then((r) => r.json()) as Promise<{ path: string }[]>,
   ]);
 
   const titleA = rowsA[0]?.path.split("/").pop() ?? link.file_a_id;
@@ -177,10 +189,12 @@ async function sendTelegramApproval(env: Env, link: Link): Promise<void> {
       text,
       parse_mode: "Markdown",
       reply_markup: {
-        inline_keyboard: [[
-          { text: "✅ Approve", callback_data: `approve:${link.id}` },
-          { text: "❌ Reject", callback_data: `reject:${link.id}` },
-        ]],
+        inline_keyboard: [
+          [
+            { text: "✅ Approve", callback_data: `approve:${link.id}` },
+            { text: "❌ Reject", callback_data: `reject:${link.id}` },
+          ],
+        ],
       },
     }),
   });
