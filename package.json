@@ -1,0 +1,15 @@
+{
+  "name": "openbrain",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "services/*",
+    "apps/desktop"
+  ],
+  "scripts": {
+    "dev:worker": "npm -w services/worker run dev",
+    "dev:desktop": "npm -w apps/desktop run tauri:dev",
+    "typecheck": "npm -ws run typecheck --if-present",
+    "test": "npm -ws run test --if-present"
+  }
+}

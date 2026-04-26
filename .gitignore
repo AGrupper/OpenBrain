@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.env
+*.env.local
+target/
+.DS_Store
+Thumbs.db
+*.log
+.wrangler/
+.claude/settings.local.json
