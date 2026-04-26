@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default capability for OpenBrain desktop","local":true,"windows":["main"],"permissions":["core:default","dialog:default","fs:default","fs:allow-home-meta","fs:allow-appdata-meta","shell:default"]}}

@@ -33,13 +33,19 @@ struct RemoteFile {
     id: String,
     path: String,
     sha256: String,
+    #[allow(dead_code)]
     size: u64,
 }
 
 impl SyncEngine {
     pub async fn new(config: SyncConfig) -> Result<Self> {
         let client = Client::builder().timeout(Duration::from_secs(30)).build()?;
-        Ok(Self { config, client, stop_tx: None, watcher: None })
+        Ok(Self {
+            config,
+            client,
+            stop_tx: None,
+            watcher: None,
+        })
     }
 
     pub async fn start(&mut self) -> Result<()> {
@@ -53,7 +59,10 @@ impl SyncEngine {
         let event_tx_clone = event_tx.clone();
         let mut watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
             if let Ok(event) = res {
-                if matches!(event.kind, EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)) {
+                if matches!(
+                    event.kind,
+                    EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
+                ) {
                     for path in event.paths {
                         let _ = event_tx_clone.blocking_send(path);
                     }
@@ -223,10 +232,19 @@ async fn pull_remote(client: &Client, cfg: &SyncConfig, vault: &Path) -> Result<
 async fn full_sync(client: &Client, cfg: &SyncConfig, vault: &Path) -> Result<()> {
     // Upload any local files not yet on server
     for entry in WalkDir::new(vault).into_iter().filter_map(|e| e.ok()) {
-        if !entry.file_type().is_file() { continue; }
+        if !entry.file_type().is_file() {
+            continue;
+        }
         let path = entry.path();
         // Skip hidden files
-        if path.file_name().and_then(|n| n.to_str()).map(|n| n.starts_with('.')).unwrap_or(false) { continue; }
+        if path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.starts_with('.'))
+            .unwrap_or(false)
+        {
+            continue;
+        }
         if let Err(e) = upload_file(client, cfg, vault, path).await {
             log::warn!("Initial upload {path:?}: {e}");
         }
@@ -249,7 +267,10 @@ mod tests {
         f.write_all(b"hello").unwrap();
         let sha = sha256_file(&p).unwrap();
         // sha256("hello")
-        assert_eq!(sha, "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824");
+        assert_eq!(
+            sha,
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
     }
 
     #[test]

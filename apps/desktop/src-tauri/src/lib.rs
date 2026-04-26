@@ -1,9 +1,9 @@
 mod sync;
 
-use sync::engine::{SyncEngine, SyncConfig};
 use std::sync::Arc;
+use sync::engine::{SyncConfig, SyncEngine};
+use tauri::State;
 use tokio::sync::Mutex;
-use tauri::{Manager, State};
 
 pub struct AppState {
     pub engine: Arc<Mutex<Option<SyncEngine>>>,
@@ -16,8 +16,12 @@ async fn start_sync(
     auth_token: String,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    let cfg = SyncConfig { vault_path, api_url, auth_token };
-    let engine = SyncEngine::new(cfg).await.map_err(|e| e.to_string())?;
+    let cfg = SyncConfig {
+        vault_path,
+        api_url,
+        auth_token,
+    };
+    let mut engine = SyncEngine::new(cfg).await.map_err(|e| e.to_string())?;
     engine.start().await.map_err(|e| e.to_string())?;
     let mut guard = state.engine.lock().await;
     *guard = Some(engine);
@@ -44,8 +48,14 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
-        .manage(AppState { engine: Arc::new(Mutex::new(None)) })
-        .invoke_handler(tauri::generate_handler![start_sync, stop_sync, get_vault_path])
+        .manage(AppState {
+            engine: Arc::new(Mutex::new(None)),
+        })
+        .invoke_handler(tauri::generate_handler![
+            start_sync,
+            stop_sync,
+            get_vault_path
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
