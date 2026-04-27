@@ -33,6 +33,16 @@ jobs:
         working-directory: apps/desktop/src-tauri
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - name: Install JS dependencies
+        working-directory: .
+        run: npm ci
+      - name: Build desktop frontend
+        working-directory: apps/desktop
+        run: npm run build
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
