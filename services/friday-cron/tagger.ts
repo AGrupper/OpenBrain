@@ -24,7 +24,7 @@ async function apiFetch(path: string, opts: RequestInit = {}) {
   return res.json();
 }
 
-async function getRecentCorrections(): Promise<string> {
+export async function getRecentCorrections(): Promise<string> {
   // Fetch last 20 corrections to give Friday context about your preferences
   const res = await fetch(`${API}/corrections?limit=20`, { headers });
   if (!res.ok) return "";
@@ -102,7 +102,7 @@ Respond with JSON only:
   throw new Error(`Unsupported FRIDAY_MODEL_PROVIDER: ${MODEL_PROVIDER}`);
 }
 
-async function main() {
+export async function main() {
   console.log(`[tagger] Starting run at ${new Date().toISOString()}`);
 
   const files: VaultFile[] = await apiFetch(`/files?needs_tagging=true&limit=${MAX_FILES}`);
