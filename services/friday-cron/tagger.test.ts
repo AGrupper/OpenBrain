@@ -129,7 +129,7 @@ describe("main", () => {
 
     vi.stubGlobal(
       "fetch",
-      vi.fn(async (url: string, opts?: RequestInit): Promise<Response> => {
+      vi.fn(async (url: string, _opts?: RequestInit): Promise<Response> => {
         if (url.includes("needs_tagging=true")) return okResponse([fileA, fileB]);
         if (url.includes("select=folder")) return okResponse([]);
         if (url.includes("/corrections")) return okResponse([]);
