@@ -83,6 +83,24 @@ async function embedText(text: string): Promise<number[]> {
     return vec;
   }
 
+  if (provider === "ollama") {
+    const base = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
+    const model = process.env.OLLAMA_EMBEDDING_MODEL ?? "mxbai-embed-large";
+    const res = await fetch(`${base}/v1/embeddings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model, input: text }),
+    });
+    const data = (await res.json()) as { data: { embedding: number[] }[] };
+    const vec = data.data[0].embedding;
+    if (vec.length !== EMBEDDING_DIMENSIONS) {
+      throw new Error(
+        `Ollama model ${model} returned ${vec.length}-dim embedding, expected ${EMBEDDING_DIMENSIONS}. Use mxbai-embed-large.`,
+      );
+    }
+    return vec;
+  }
+
   throw new Error(`Unsupported EMBEDDING_PROVIDER: ${provider}`);
 }
 
@@ -137,6 +155,21 @@ Respond with JSON only:
         model,
         messages: [{ role: "user", content: prompt }],
         response_format: { type: "json_object" },
+      }),
+    });
+    const data = (await res.json()) as { choices: { message: { content: string } }[] };
+    return JSON.parse(data.choices[0].message.content);
+  }
+
+  if (provider === "ollama") {
+    const base = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
+    const res = await fetch(`${base}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: prompt }],
+        format: "json",
       }),
     });
     const data = (await res.json()) as { choices: { message: { content: string } }[] };

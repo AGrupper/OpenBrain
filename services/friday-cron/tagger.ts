@@ -99,6 +99,21 @@ Respond with JSON only:
     return JSON.parse(data.choices[0].message.content);
   }
 
+  if (MODEL_PROVIDER === "ollama") {
+    const base = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
+    const res = await fetch(`${base}/v1/chat/completions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: MODEL,
+        messages: [{ role: "user", content: prompt }],
+        format: "json",
+      }),
+    });
+    const data = (await res.json()) as { choices: { message: { content: string } }[] };
+    return JSON.parse(data.choices[0].message.content);
+  }
+
   throw new Error(`Unsupported FRIDAY_MODEL_PROVIDER: ${MODEL_PROVIDER}`);
 }
 
