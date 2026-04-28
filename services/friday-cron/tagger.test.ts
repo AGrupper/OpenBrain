@@ -44,19 +44,18 @@ describe("getRecentCorrections", () => {
   });
 
   it("returns empty string when corrections list is empty", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(okResponse([])),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(okResponse([])));
     expect(await getRecentCorrections()).toBe("");
   });
 
   it("formats corrections into a labeled list", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        okResponse([{ field: "folder", old_value: "inbox", new_value: "projects" }]),
-      ),
+      vi
+        .fn()
+        .mockResolvedValue(
+          okResponse([{ field: "folder", old_value: "inbox", new_value: "projects" }]),
+        ),
     );
     const result = await getRecentCorrections();
     expect(result).toContain('Changed folder from "inbox" to "projects"');
@@ -103,7 +102,8 @@ describe("main", () => {
         if (url.includes("needs_tagging=true")) return okResponse([file]);
         if (url.includes("select=folder")) return okResponse([]);
         if (url.includes("/corrections")) return okResponse([]);
-        if (url.includes("anthropic")) return anthropicResponse({ folder: "notes", tags: ["meeting", "work"] });
+        if (url.includes("anthropic"))
+          return anthropicResponse({ folder: "notes", tags: ["meeting", "work"] });
         if (url.includes(`/files/${file.id}`)) {
           patchBodies.push(JSON.parse(opts?.body as string));
           return okResponse(null, 204);
