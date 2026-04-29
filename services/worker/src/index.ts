@@ -13,6 +13,20 @@ export interface Env {
   OPENBRAIN_AUTH_TOKEN: string;
 }
 
+const CORS_HEADERS: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+  "Access-Control-Allow-Headers":
+    "Authorization, Content-Type, X-File-Path, X-File-Sha256, X-File-Size",
+  "Access-Control-Max-Age": "86400",
+};
+
+function withCors(res: Response): Response {
+  const headers = new Headers(res.headers);
+  for (const [k, v] of Object.entries(CORS_HEADERS)) headers.set(k, v);
+  return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+}
+
 function auth(request: Request, env: Env): Response | null {
   const header = request.headers.get("Authorization") ?? "";
   if (header !== `Bearer ${env.OPENBRAIN_AUTH_TOKEN}`) {
@@ -26,6 +40,11 @@ export default {
     const url = new URL(request.url);
     const path = url.pathname;
 
+    // CORS preflight — answer before auth so the browser can send the actual request
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: CORS_HEADERS });
+    }
+
     // Telegram webhook — verified by bot token in the path, no auth header needed
     if (path.startsWith("/telegram/")) {
       return handleTelegram(request, env);
@@ -33,13 +52,15 @@ export default {
 
     // All other routes require bearer auth
     const authError = auth(request, env);
-    if (authError) return authError;
+    if (authError) return withCors(authError);
 
-    if (path.startsWith("/files")) return handleFiles(request, env, url);
-    if (path.startsWith("/links")) return handleLinks(request, env, url);
-    if (path.startsWith("/search")) return handleSearch(request, env, url);
-    if (path.startsWith("/corrections")) return handleCorrections(request, env, url);
+    let response: Response;
+    if (path.startsWith("/files")) response = await handleFiles(request, env, url);
+    else if (path.startsWith("/links")) response = await handleLinks(request, env, url);
+    else if (path.startsWith("/search")) response = await handleSearch(request, env, url);
+    else if (path.startsWith("/corrections")) response = await handleCorrections(request, env, url);
+    else response = new Response("Not found", { status: 404 });
 
-    return new Response("Not found", { status: 404 });
+    return withCors(response);
   },
 };
