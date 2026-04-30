@@ -31,7 +31,7 @@ interface Props {
   apiUrl: string;
   authTokenPresent: boolean;
   theme: Theme;
-  onThemeChange: (t: Theme) => void;
+  onThemeChange: (theme: Theme) => void;
   onChooseVault: () => void;
   onClose: () => void;
 }
@@ -61,9 +61,9 @@ export function SettingsModal({
 
   if (!open) return null;
 
-  const handleThemeChange = (t: Theme) => {
-    setLocalTheme(t);
-    onThemeChange(t);
+  const handleThemeChange = (nextTheme: Theme) => {
+    setLocalTheme(nextTheme);
+    onThemeChange(nextTheme);
   };
 
   return (
@@ -72,7 +72,7 @@ export function SettingsModal({
         <div className="modal-header">
           <span style={{ fontSize: 16, fontWeight: 600 }}>Settings</span>
           <button className="btn-icon" onClick={onClose} title="Close">
-            ✕
+            Close
           </button>
         </div>
 
@@ -81,7 +81,7 @@ export function SettingsModal({
           <div className="modal-row">
             <span className="modal-value-mono">{vaultPath ?? "(not connected)"}</span>
             <button className="btn-action" onClick={onChooseVault}>
-              {vaultPath ? "Change…" : "Choose…"}
+              {vaultPath ? "Change..." : "Choose..."}
             </button>
           </div>
         </div>
@@ -89,13 +89,13 @@ export function SettingsModal({
         <div className="modal-section">
           <div className="modal-label">Theme</div>
           <div className="toggle-group" style={{ display: "inline-flex" }}>
-            {(["dark", "light", "system"] as const).map((t) => (
+            {(["dark", "light", "system"] as const).map((nextTheme) => (
               <button
-                key={t}
-                className={`toggle-btn ${localTheme === t ? "active" : ""}`}
-                onClick={() => handleThemeChange(t)}
+                key={nextTheme}
+                className={`toggle-btn ${localTheme === nextTheme ? "active" : ""}`}
+                onClick={() => handleThemeChange(nextTheme)}
               >
-                {t.charAt(0).toUpperCase() + t.slice(1)}
+                {nextTheme.charAt(0).toUpperCase() + nextTheme.slice(1)}
               </button>
             ))}
           </div>
@@ -109,7 +109,7 @@ export function SettingsModal({
         <div className="modal-section">
           <div className="modal-label">Auth token (read-only)</div>
           <div className="modal-value-mono">
-            {authTokenPresent ? "•••••••• (configured)" : "(not set)"}
+            {authTokenPresent ? "******** (configured)" : "(not set)"}
           </div>
           <div className="modal-help">
             API URL and auth token are baked at build time from <code>.env.local</code>. Edit that

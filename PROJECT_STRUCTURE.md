@@ -12,7 +12,9 @@ Read `PRD.md` first. It defines what OpenBrain is supposed to become: a personal
 
 The desktop app. This is the part you see and use.
 
-- `src/App.tsx` controls the main screen, top navigation, file import, sync status, and view switching.
+- `src/App.tsx` wires the main screen together.
+- `src/components` contains reusable app chrome such as the header and sync/import bar.
+- `src/lib/api.ts` is the desktop app's API client.
 - `src/views/ListView.tsx` shows the folder/list vault view and file reader.
 - `src/views/GraphView.tsx` shows approved file connections as a graph.
 - `src/views/SearchBar.tsx` searches the vault.
@@ -46,12 +48,6 @@ Setup and database infrastructure.
 
 - `supabase/migrations` defines the database schema and search/vector functions.
 - `SETUP.md` contains deployment and environment setup notes.
-
-### `docs`
-
-Product and supporting documentation.
-
-The root `PRD.md` is the canonical product direction. Docs here can expand on it without replacing it.
 
 ## How The App Works
 

@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import ForceGraph2D from "react-force-graph-2d";
 import type { VaultFile, Link } from "../../../../packages/shared/src/types";
-import { api } from "../api";
+import { api } from "../lib/api";
 
 interface Props {
   files: VaultFile[];
@@ -105,13 +105,13 @@ export function GraphView({ files, onSelect }: Props) {
                   : "#222222";
           ctx.fill();
 
-          // Label — only when close enough
+          // Label only when close enough.
           if (globalScale > 0.8) {
             ctx.textAlign = "center";
             ctx.textBaseline = "top";
             ctx.fillStyle = isHighlighted ? "#f3f4f6" : "#6b7280";
             ctx.fillText(
-              label.length > 20 ? label.slice(0, 18) + "…" : label,
+              label.length > 20 ? `${label.slice(0, 18)}...` : label,
               node.x!,
               node.y! + r + 4,
             );

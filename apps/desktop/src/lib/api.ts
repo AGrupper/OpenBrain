@@ -1,13 +1,13 @@
-import type { VaultFile, SearchResult, Link } from "../../../packages/shared/src/types";
+import type { Link, SearchResult, VaultFile } from "../../../../packages/shared/src/types";
 
 const BASE = import.meta.env.VITE_API_URL as string;
 const TOKEN = import.meta.env.VITE_AUTH_TOKEN as string;
 
-const h = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
+const jsonHeaders = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
 
 async function get<T>(path: string, params?: Record<string, string>): Promise<T> {
   const qs = params ? `?${new URLSearchParams(params)}` : "";
-  const res = await fetch(`${BASE}${path}${qs}`, { headers: h });
+  const res = await fetch(`${BASE}${path}${qs}`, { headers: jsonHeaders });
   if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
   return res.json();
 }
@@ -15,7 +15,7 @@ async function get<T>(path: string, params?: Record<string, string>): Promise<T>
 async function post<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "POST",
-    headers: h,
+    headers: jsonHeaders,
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`POST ${path} failed: ${res.status}`);
@@ -25,7 +25,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 async function patch<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: "PATCH",
-    headers: h,
+    headers: jsonHeaders,
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`PATCH ${path} failed: ${res.status}`);
@@ -33,7 +33,7 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
 }
 
 async function del(path: string): Promise<void> {
-  const res = await fetch(`${BASE}${path}`, { method: "DELETE", headers: h });
+  const res = await fetch(`${BASE}${path}`, { method: "DELETE", headers: jsonHeaders });
   if (!res.ok) throw new Error(`DELETE ${path} failed: ${res.status}`);
 }
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { Link, VaultFile } from "../../../../packages/shared/src/types";
-import { api } from "../api";
+import { api } from "../lib/api";
 
 interface ReviewItem {
   link: Link;

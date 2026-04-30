@@ -51,7 +51,7 @@
   --transition-normal: 250ms cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Light theme overrides — applied via [data-theme="light"] on <html>. */
+/* Light theme overrides applied via [data-theme="light"] on <html>. */
 :root[data-theme="light"] {
   --bg-base: #f7f7fa;
   --bg-surface: #ffffff;

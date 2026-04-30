@@ -1,9 +1,9 @@
-import { useState, useRef, useEffect, useCallback } from "react";
-import type { VaultFile, SearchResult } from "../../../../packages/shared/src/types";
-import { api } from "../api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { SearchResult, VaultFile } from "../../../../packages/shared/src/types";
+import { api } from "../lib/api";
 
 interface Props {
-  onSelect: (f: VaultFile) => void;
+  onSelect: (file: VaultFile) => void;
 }
 
 export function SearchBar({ onSelect }: Props) {
@@ -24,9 +24,9 @@ export function SearchBar({ onSelect }: Props) {
     }
     setLoading(true);
     try {
-      const { results: r, total: t } = await api.search.query(q, limit);
-      setResults(r);
-      setTotal(t);
+      const { results: nextResults, total: nextTotal } = await api.search.query(q, limit);
+      setResults(nextResults);
+      setTotal(nextTotal);
     } catch {
       setResults([]);
     } finally {
@@ -43,18 +43,12 @@ export function SearchBar({ onSelect }: Props) {
       return;
     }
     debounceRef.current = setTimeout(() => {
-      search(query, 5);
+      void search(query, 5);
       setOpen(true);
       setShowAll(false);
     }, 300);
   }, [query, search]);
 
-  const handleShowAll = () => {
-    setShowAll(true);
-    search(query, 50);
-  };
-
-  // Close dropdown on outside click
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (!(e.target as Element).closest("[data-searchbar]")) setOpen(false);
@@ -63,19 +57,24 @@ export function SearchBar({ onSelect }: Props) {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
+  const handleShowAll = () => {
+    setShowAll(true);
+    void search(query, 50);
+  };
+
   return (
     <div data-searchbar="" style={styles.wrapper}>
       <div style={styles.inputRow}>
-        <span style={styles.icon}>🔍</span>
+        <span style={styles.icon}>Search</span>
         <input
           ref={inputRef}
           style={styles.input}
-          placeholder="Search your vault…"
+          placeholder="Search your vault..."
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onFocus={() => query && setOpen(true)}
         />
-        {loading && <span style={styles.spinner}>⏳</span>}
+        {loading && <span style={styles.spinner}>Loading</span>}
         {query && (
           <button
             style={styles.clear}
@@ -86,19 +85,19 @@ export function SearchBar({ onSelect }: Props) {
               inputRef.current?.focus();
             }}
           >
-            ✕
+            Clear
           </button>
         )}
       </div>
 
       {open && results.length > 0 && (
         <div style={styles.dropdown}>
-          {results.map((r) => (
+          {results.map((result) => (
             <ResultRow
-              key={r.file.id}
-              result={r}
-              onSelect={(f) => {
-                onSelect(f);
+              key={result.file.id}
+              result={result}
+              onSelect={(file) => {
+                onSelect(file);
                 setOpen(false);
                 setQuery("");
               }}
@@ -106,7 +105,7 @@ export function SearchBar({ onSelect }: Props) {
           ))}
           {!showAll && total > 5 && (
             <button style={styles.showAll} onClick={handleShowAll}>
-              Show all {total} relevant results ↓
+              Show all {total} relevant results
             </button>
           )}
         </div>
@@ -125,12 +124,12 @@ function highlightSnippet(snippet: string): React.ReactNode[] {
   const segments: React.ReactNode[] = [];
   const re = /\*\*(.*?)\*\*/g;
   let last = 0;
-  let m: RegExpExecArray | null;
-  let i = 0;
-  while ((m = re.exec(snippet)) !== null) {
-    if (m.index > last) segments.push(snippet.slice(last, m.index));
-    segments.push(<mark key={i++}>{m[1]}</mark>);
-    last = m.index + m[0].length;
+  let match: RegExpExecArray | null;
+  let index = 0;
+  while ((match = re.exec(snippet)) !== null) {
+    if (match.index > last) segments.push(snippet.slice(last, match.index));
+    segments.push(<mark key={index++}>{match[1]}</mark>);
+    last = match.index + match[0].length;
   }
   if (last < snippet.length) segments.push(snippet.slice(last));
   return segments;
@@ -141,7 +140,7 @@ function ResultRow({
   onSelect,
 }: {
   result: SearchResult;
-  onSelect: (f: VaultFile) => void;
+  onSelect: (file: VaultFile) => void;
 }) {
   const name = result.file.path.split("/").pop() ?? result.file.path;
   return (
@@ -169,9 +168,8 @@ const styles: Record<string, React.CSSProperties> = {
     gap: "var(--spacing-3)",
     boxShadow: "inset 0 1px 3px rgba(0,0,0,0.2), 0 1px 2px rgba(255,255,255,0.02)",
     border: "1px solid var(--border-highlight)",
-    transition: "border-color var(--transition-fast)",
   },
-  icon: { fontSize: 16, opacity: 0.5 },
+  icon: { fontSize: 12, opacity: 0.6, textTransform: "uppercase", fontWeight: 700 },
   input: {
     flex: 1,
     background: "transparent",
@@ -182,15 +180,14 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: "inherit",
     fontWeight: 500,
   },
-  spinner: { fontSize: 14, opacity: 0.6 },
+  spinner: { fontSize: 12, opacity: 0.6 },
   clear: {
     background: "none",
     border: "none",
     color: "var(--text-muted)",
     cursor: "pointer",
-    fontSize: 14,
+    fontSize: 12,
     padding: "0 4px",
-    transition: "color var(--transition-fast)",
   },
   dropdown: {
     position: "absolute",
@@ -210,7 +207,6 @@ const styles: Record<string, React.CSSProperties> = {
     padding: "var(--spacing-3) var(--spacing-4)",
     cursor: "pointer",
     borderBottom: "1px solid var(--border-color)",
-    transition: "background var(--transition-fast)",
   },
   resultName: {
     fontSize: 14,
@@ -230,7 +226,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     fontWeight: 500,
     textAlign: "center",
-    transition: "background var(--transition-fast)",
   },
   noResults: {
     padding: "var(--spacing-4)",

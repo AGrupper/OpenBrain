@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import { invoke } from "@tauri-apps/api/core";
 import type { Link, VaultFile } from "../../../../packages/shared/src/types";
-import { api } from "../api";
+import { api } from "../lib/api";
 
 interface Props {
   files: VaultFile[];

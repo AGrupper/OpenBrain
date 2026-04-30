@@ -11,3 +11,4 @@ Thumbs.db
 .wrangler/
 .claude/settings.local.json
 .claude/worktrees/
+.cursor/
