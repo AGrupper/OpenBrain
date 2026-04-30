@@ -4,6 +4,13 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { ListView } from "./views/ListView";
 import { GraphView } from "./views/GraphView";
 import { SearchBar } from "./views/SearchBar";
+import {
+  SettingsModal,
+  applyTheme,
+  loadTheme,
+  persistTheme,
+  type Theme,
+} from "./views/SettingsModal";
 import type { VaultFile } from "../../../packages/shared/src/types";
 import { api } from "./api";
 
@@ -21,6 +28,9 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
   const [syncError, setSyncError] = useState<string | null>(null);
 
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [theme, setTheme] = useState<Theme>(() => loadTheme());
+
   const loadFiles = useCallback(() => {
     setLoading(true);
     api.files
@@ -29,6 +39,11 @@ export default function App() {
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
   }, []);
+
+  // Apply persisted theme on mount.
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
 
   // On mount, check if a vault path is already stored in Tauri state.
   useEffect(() => {
@@ -80,9 +95,14 @@ export default function App() {
     }
   };
 
+  const handleThemeChange = (t: Theme) => {
+    setTheme(t);
+    persistTheme(t);
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
-      <Header view={view} onViewChange={setView} />
+      <Header view={view} onViewChange={setView} onOpenSettings={() => setSettingsOpen(true)} />
       <SyncBar
         vaultPath={vaultPath}
         status={syncStatus}
@@ -93,14 +113,33 @@ export default function App() {
       <SearchBar onSelect={setSelectedFile} />
       <div style={{ flex: 1, overflow: "hidden" }}>
         {loading && <div style={styles.center}>Loading vault...</div>}
-        {error && <div style={{ ...styles.center, color: "#ff6b6b" }}>{error}</div>}
+        {error && <div style={{ ...styles.center, color: "var(--accent-danger)" }}>{error}</div>}
         {!loading && !error && view === "list" && (
-          <ListView files={files} selectedFile={selectedFile} onSelect={setSelectedFile} />
+          <ListView
+            files={files}
+            selectedFile={selectedFile}
+            onSelect={setSelectedFile}
+            vaultPath={vaultPath}
+            onChange={loadFiles}
+          />
         )}
         {!loading && !error && view === "graph" && (
           <GraphView files={files} onSelect={setSelectedFile} />
         )}
       </div>
+      <SettingsModal
+        open={settingsOpen}
+        vaultPath={vaultPath}
+        apiUrl={(import.meta.env.VITE_API_URL as string) ?? ""}
+        authTokenPresent={Boolean(import.meta.env.VITE_AUTH_TOKEN)}
+        theme={theme}
+        onThemeChange={handleThemeChange}
+        onChooseVault={() => {
+          setSettingsOpen(false);
+          handleChooseVault();
+        }}
+        onClose={() => setSettingsOpen(false)}
+      />
     </div>
   );
 }
@@ -120,9 +159,9 @@ function SyncBar({
 }) {
   if (!vaultPath && status === "idle") {
     return (
-      <div style={styles.syncBar}>
-        <span style={{ color: "#888", fontSize: 13 }}>No vault connected.</span>
-        <button style={styles.primaryBtn} onClick={onChoose}>
+      <div className="sync-bar">
+        <span style={{ color: "var(--text-secondary)", fontSize: 13 }}>No vault connected.</span>
+        <button className="btn-primary" onClick={onChoose}>
           Choose vault folder
         </button>
       </div>
@@ -130,11 +169,11 @@ function SyncBar({
   }
 
   return (
-    <div style={styles.syncBar}>
+    <div className="sync-bar">
       <span
         style={{
           fontSize: 12,
-          color: "#888",
+          color: "var(--text-secondary)",
           flex: 1,
           overflow: "hidden",
           textOverflow: "ellipsis",
@@ -143,16 +182,23 @@ function SyncBar({
       >
         {vaultPath ?? ""}
       </span>
-      {error && <span style={{ color: "#ff6b6b", fontSize: 12, marginRight: 8 }}>{error}</span>}
-      <span style={{ ...styles.statusDot, background: statusColor(status) }} />
-      <span style={{ fontSize: 12, color: "#aaa", marginRight: 8 }}>{statusLabel(status)}</span>
+      {error && (
+        <span style={{ color: "var(--accent-danger)", fontSize: 12, marginRight: 8 }}>{error}</span>
+      )}
+      <span
+        className="status-dot"
+        style={{ color: statusColor(status), background: statusColor(status) }}
+      />
+      <span style={{ fontSize: 12, color: "var(--text-muted)", marginRight: 8 }}>
+        {statusLabel(status)}
+      </span>
       {(status === "running" || status === "stopping" || status === "error") && (
-        <button style={styles.stopBtn} onClick={onStop} disabled={status === "stopping"}>
+        <button className="btn-stop" onClick={onStop} disabled={status === "stopping"}>
           Stop
         </button>
       )}
       {status === "idle" && (
-        <button style={styles.primaryBtn} onClick={onChoose}>
+        <button className="btn-primary" onClick={onChoose}>
           Choose vault folder
         </button>
       )}
@@ -161,10 +207,10 @@ function SyncBar({
 }
 
 function statusColor(s: SyncStatus) {
-  if (s === "running") return "#4caf50";
-  if (s === "starting" || s === "stopping") return "#ff9800";
-  if (s === "error") return "#ff6b6b";
-  return "#555";
+  if (s === "running") return "var(--accent-success)";
+  if (s === "starting" || s === "stopping") return "var(--accent-warning)";
+  if (s === "error") return "var(--accent-danger)";
+  return "var(--text-muted)";
 }
 
 function statusLabel(s: SyncStatus) {
@@ -175,22 +221,35 @@ function statusLabel(s: SyncStatus) {
   return "Stopped";
 }
 
-function Header({ view, onViewChange }: { view: ViewMode; onViewChange: (v: ViewMode) => void }) {
+function Header({
+  view,
+  onViewChange,
+  onOpenSettings,
+}: {
+  view: ViewMode;
+  onViewChange: (v: ViewMode) => void;
+  onOpenSettings: () => void;
+}) {
   return (
-    <div style={styles.header}>
-      <span style={styles.logo}>🧠 OpenBrain</span>
-      <div style={styles.toggle}>
-        <button
-          style={{ ...styles.toggleBtn, ...(view === "list" ? styles.toggleActive : {}) }}
-          onClick={() => onViewChange("list")}
-        >
-          List
-        </button>
-        <button
-          style={{ ...styles.toggleBtn, ...(view === "graph" ? styles.toggleActive : {}) }}
-          onClick={() => onViewChange("graph")}
-        >
-          Graph
+    <div className="app-header">
+      <span className="app-logo">🧠 OpenBrain</span>
+      <div style={{ display: "flex", alignItems: "center", gap: "var(--spacing-3)" }}>
+        <div className="toggle-group">
+          <button
+            className={`toggle-btn ${view === "list" ? "active" : ""}`}
+            onClick={() => onViewChange("list")}
+          >
+            List
+          </button>
+          <button
+            className={`toggle-btn ${view === "graph" ? "active" : ""}`}
+            onClick={() => onViewChange("graph")}
+          >
+            Graph
+          </button>
+        </div>
+        <button className="btn-icon" onClick={onOpenSettings} title="Settings">
+          ⚙
         </button>
       </div>
     </div>
@@ -198,66 +257,12 @@ function Header({ view, onViewChange }: { view: ViewMode; onViewChange: (v: View
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  header: {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "space-between",
-    padding: "12px 20px",
-    background: "#161616",
-    borderBottom: "1px solid #2a2a2a",
-  },
-  logo: { fontSize: 18, fontWeight: 700, letterSpacing: -0.5 },
-  toggle: { display: "flex", gap: 4, background: "#222", borderRadius: 8, padding: 3 },
-  toggleBtn: {
-    padding: "5px 14px",
-    borderRadius: 6,
-    border: "none",
-    background: "transparent",
-    color: "#aaa",
-    cursor: "pointer",
-    fontSize: 13,
-    fontWeight: 500,
-  },
-  toggleActive: { background: "#333", color: "#fff" },
   center: {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
     height: "100%",
-    color: "#888",
-  },
-  syncBar: {
-    display: "flex",
-    alignItems: "center",
-    gap: 8,
-    padding: "6px 20px",
-    background: "#111",
-    borderBottom: "1px solid #222",
-    minHeight: 36,
-  },
-  primaryBtn: {
-    padding: "4px 12px",
-    borderRadius: 6,
-    border: "1px solid #444",
-    background: "#222",
-    color: "#fff",
-    cursor: "pointer",
-    fontSize: 12,
-    fontWeight: 500,
-  },
-  stopBtn: {
-    padding: "4px 10px",
-    borderRadius: 6,
-    border: "1px solid #444",
-    background: "transparent",
-    color: "#aaa",
-    cursor: "pointer",
-    fontSize: 12,
-  },
-  statusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: "50%",
-    flexShrink: 0,
+    color: "var(--text-secondary)",
+    fontSize: 14,
   },
 };

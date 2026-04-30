@@ -61,21 +61,21 @@ export function GraphView({ files, onSelect }: Props) {
     : null;
 
   return (
-    <div ref={containerRef} style={{ width: "100%", height: "100%", background: "#0d0d0d" }}>
+    <div ref={containerRef} style={{ width: "100%", height: "100%", background: "var(--bg-base)" }}>
       <ForceGraph2D
         width={dimensions.width}
         height={dimensions.height}
         graphData={graphData}
         nodeLabel="name"
         nodeColor={(node) => {
-          if (!neighborIds) return "#4a9eff";
-          if (node.id === hoveredNodeId) return "#fff";
-          if (neighborIds.has(node.id as string)) return "#4ade80";
-          return "#2a2a2a";
+          if (!neighborIds) return "#3b82f6";
+          if (node.id === hoveredNodeId) return "#f3f4f6";
+          if (neighborIds.has(node.id as string)) return "#10b981";
+          return "#222222";
         }}
         linkColor={(link) => {
-          if (!hoveredNodeId) return "#333";
-          if (link.source === hoveredNodeId || link.target === hoveredNodeId) return "#4a9eff";
+          if (!hoveredNodeId) return "#1a1a1a";
+          if (link.source === hoveredNodeId || link.target === hoveredNodeId) return "#3b82f6";
           return "#1a1a1a";
         }}
         linkWidth={(link) => (link.value as number) * 2}
@@ -87,7 +87,7 @@ export function GraphView({ files, onSelect }: Props) {
         nodeCanvasObject={(node, ctx, globalScale) => {
           const label = node.name as string;
           const fontSize = 12 / globalScale;
-          ctx.font = `${fontSize}px sans-serif`;
+          ctx.font = `500 ${fontSize}px Inter, sans-serif`;
           const r = Math.sqrt(node.val as number) * 4;
 
           // Node circle
@@ -97,27 +97,27 @@ export function GraphView({ files, onSelect }: Props) {
             !neighborIds || node.id === hoveredNodeId || neighborIds.has(node.id as string);
           ctx.fillStyle =
             node.id === hoveredNodeId
-              ? "#fff"
+              ? "#f3f4f6"
               : neighborIds && neighborIds.has(node.id as string)
-                ? "#4ade80"
+                ? "#10b981"
                 : isHighlighted
-                  ? "#4a9eff"
-                  : "#2a2a2a";
+                  ? "#3b82f6"
+                  : "#222222";
           ctx.fill();
 
           // Label — only when close enough
           if (globalScale > 0.8) {
             ctx.textAlign = "center";
             ctx.textBaseline = "top";
-            ctx.fillStyle = isHighlighted ? "#ddd" : "#555";
+            ctx.fillStyle = isHighlighted ? "#f3f4f6" : "#6b7280";
             ctx.fillText(
               label.length > 20 ? label.slice(0, 18) + "…" : label,
               node.x!,
-              node.y! + r + 2,
+              node.y! + r + 4,
             );
           }
         }}
-        backgroundColor="#0d0d0d"
+        backgroundColor="#0a0a0a"
         linkDirectionalParticles={2}
         linkDirectionalParticleWidth={(link) => (link.value as number) * 2}
       />

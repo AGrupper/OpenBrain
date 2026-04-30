@@ -52,7 +52,7 @@ impl SyncEngine {
         let vault = PathBuf::from(&self.config.vault_path);
         std::fs::create_dir_all(&vault)?;
 
-        let (event_tx, mut event_rx) = mpsc::channel::<PathBuf>(256);
+        let (event_tx, mut event_rx) = mpsc::channel::<(PathBuf, EventKind)>(256);
         let (stop_tx, mut stop_rx) = mpsc::channel::<()>(1);
 
         // File-system watcher
@@ -63,8 +63,9 @@ impl SyncEngine {
                     event.kind,
                     EventKind::Create(_) | EventKind::Modify(_) | EventKind::Remove(_)
                 ) {
+                    let kind = event.kind;
                     for path in event.paths {
-                        let _ = event_tx_clone.blocking_send(path);
+                        let _ = event_tx_clone.blocking_send((path, kind));
                     }
                 }
             }
@@ -98,7 +99,7 @@ impl SyncEngine {
                             log::error!("Pull error: {e}");
                         }
                     }
-                    Some(path) = event_rx.recv() => {
+                    Some((path, kind)) = event_rx.recv() => {
                         // Debounce: wait 500ms after last event for the same path
                         {
                             let mut d = debounce_clone.lock().await;
@@ -109,7 +110,12 @@ impl SyncEngine {
                             let mut d = debounce_clone.lock().await;
                             if d.remove(&path).is_none() { continue; }
                         }
-                        if path.is_file() {
+                        if matches!(kind, EventKind::Remove(_)) && !path.exists() {
+                            // File was removed locally — drop it server-side too.
+                            if let Err(e) = delete_remote(&client, &cfg, &vault, &path).await {
+                                log::error!("Delete {path:?}: {e}");
+                            }
+                        } else if path.is_file() {
                             if let Err(e) = upload_file(&client, &cfg, &vault, &path).await {
                                 log::error!("Upload {path:?}: {e}");
                             }
@@ -122,6 +128,13 @@ impl SyncEngine {
         self.stop_tx = Some(stop_tx);
         self.watcher = Some(watcher);
         Ok(())
+    }
+
+    /// Trigger an immediate pull from the server. Used after rename/delete
+    /// from the UI so the user doesn't wait for the 60s tick.
+    pub async fn force_pull(&self) -> Result<()> {
+        let vault = PathBuf::from(&self.config.vault_path);
+        pull_remote(&self.client, &self.config, &vault).await
     }
 
     pub async fn stop(mut self) -> Result<()> {
@@ -163,6 +176,37 @@ fn guess_mime(path: &Path) -> &'static str {
         Some("js") | Some("jsx") => "text/javascript",
         _ => "application/octet-stream",
     }
+}
+
+async fn delete_remote(client: &Client, cfg: &SyncConfig, vault: &Path, path: &Path) -> Result<()> {
+    let rel = relative_path(vault, path);
+    let encoded = url_encode_path(&rel);
+    client
+        .delete(format!("{}/files?path={}", cfg.api_url, encoded))
+        .header("Authorization", format!("Bearer {}", cfg.auth_token))
+        .send()
+        .await?
+        .error_for_status()?;
+    log::info!("Deleted: {rel}");
+    Ok(())
+}
+
+fn url_encode_path(rel: &str) -> String {
+    // Encode every byte that is not unreserved (RFC 3986), including `/`,
+    // so the path travels safely through the query string.
+    const HEX: &[u8] = b"0123456789ABCDEF";
+    let mut out = String::with_capacity(rel.len());
+    for b in rel.bytes() {
+        let unreserved = b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_' | b'~');
+        if unreserved {
+            out.push(b as char);
+        } else {
+            out.push('%');
+            out.push(HEX[(b >> 4) as usize] as char);
+            out.push(HEX[(b & 0x0f) as usize] as char);
+        }
+    }
+    out
 }
 
 async fn upload_file(client: &Client, cfg: &SyncConfig, vault: &Path, path: &Path) -> Result<()> {
@@ -286,6 +330,23 @@ mod tests {
         let outside = Path::new("/elsewhere/note.md");
         let s = relative_path(vault, outside);
         assert_eq!(s, "/elsewhere/note.md".replace('\\', "/"));
+    }
+
+    #[test]
+    fn url_encode_path_escapes_slashes_and_spaces() {
+        assert_eq!(url_encode_path("notes/x.md"), "notes%2Fx.md");
+        assert_eq!(url_encode_path("a b/c.md"), "a%20b%2Fc.md");
+        assert_eq!(url_encode_path("plain.md"), "plain.md");
+        assert_eq!(
+            url_encode_path("dir/sub-dir/_file.txt"),
+            "dir%2Fsub-dir%2F_file.txt"
+        );
+    }
+
+    #[test]
+    fn url_encode_path_handles_non_ascii() {
+        // utf-8 encoding of "é" is 0xC3 0xA9 → %C3%A9
+        assert_eq!(url_encode_path("café.md"), "caf%C3%A9.md");
     }
 
     #[test]
