@@ -219,6 +219,20 @@ fn get_persisted_vault_path(app: AppHandle) -> Result<Option<String>, String> {
     out
 }
 
+#[tauri::command]
+async fn force_pull(state: State<'_, AppState>) -> Result<(), String> {
+    let guard = state.engine.lock().await;
+    if let Some(engine) = guard.as_ref() {
+        engine.force_pull().await.map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn open_in_default_app(path: String) -> Result<(), String> {
+    opener::open(path).map_err(|e| e.to_string())
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -232,7 +246,9 @@ pub fn run() {
             import_files,
             stop_sync,
             get_vault_path,
-            get_persisted_vault_path
+            get_persisted_vault_path,
+            force_pull,
+            open_in_default_app
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

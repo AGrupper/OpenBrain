@@ -259,8 +259,28 @@ export async function handleFiles(request: Request, env: Env, url: URL): Promise
     }
 
     // PATCH /files/:id — update path, folder, tags, etc.
+    // When path changes, copy R2 object to the new key and delete the old one
+    // so renames don't leave orphan blobs.
     if (method === "PATCH" && fileId && !sub) {
       const body = (await request.json()) as Partial<VaultFile>;
+      if (typeof body.path === "string") {
+        const current = (await db(env).query("files", {
+          id: `eq.${fileId}`,
+          select: "path",
+        })) as { path: string }[];
+        if (!current.length) return new Response("Not found", { status: 404 });
+        const oldPath = current[0].path;
+        const newPath = body.path;
+        if (oldPath !== newPath) {
+          const obj = await env.VAULT_BUCKET.get(oldPath);
+          if (obj) {
+            await env.VAULT_BUCKET.put(newPath, obj.body, {
+              httpMetadata: obj.httpMetadata,
+            });
+            await env.VAULT_BUCKET.delete(oldPath);
+          }
+        }
+      }
       const rows = await db(env).patch("files", fileId, {
         ...body,
         updated_at: new Date().toISOString(),
@@ -275,6 +295,21 @@ export async function handleFiles(request: Request, env: Env, url: URL): Promise
       }[];
       if (rows.length) await env.VAULT_BUCKET.delete(rows[0].path);
       await db(env).delete("files", fileId);
+      return new Response(null, { status: 204 });
+    }
+
+    // DELETE /files?path=<relpath> — remove by path (used by sync engine when a
+    // file is removed locally and we don't have the id handy).
+    if (method === "DELETE" && !fileId) {
+      const targetPath = url.searchParams.get("path");
+      if (!targetPath) return new Response("Missing path query param", { status: 400 });
+      const rows = (await db(env).query("files", {
+        path: `eq.${targetPath}`,
+        select: "id,path",
+      })) as { id: string; path: string }[];
+      if (!rows.length) return new Response(null, { status: 204 });
+      await env.VAULT_BUCKET.delete(rows[0].path);
+      await db(env).delete("files", rows[0].id);
       return new Response(null, { status: 204 });
     }
 

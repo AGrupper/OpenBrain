@@ -319,6 +319,123 @@ describe("handleFiles — POST /files/:id/embedding", () => {
   });
 });
 
+describe("handleFiles — PATCH /files/:id with path change", () => {
+  it("copies R2 object and deletes old key when path changes", async () => {
+    const fetchMock = vi
+      .fn()
+      // 1st call: db.query for current path
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ path: "old/n.md" }]), { status: 200 }))
+      // 2nd call: db.patch result
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([{ id: "abc", path: "new/n.md" }]), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const r2Body = new ArrayBuffer(4);
+    const env = makeEnv({
+      VAULT_BUCKET: {
+        put: vi.fn(async () => undefined),
+        get: vi.fn(async () => ({ body: r2Body, httpMetadata: { contentType: "text/markdown" } })),
+        delete: vi.fn(async () => undefined),
+      } as unknown as R2Bucket,
+    });
+    const req = makeRequest("https://api.openbrain.dev/files/abc", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: "new/n.md" }),
+    });
+    const res = await handleFiles(req, env, new URL(req.url));
+    expect(res.status).toBe(200);
+    expect(env.VAULT_BUCKET.get).toHaveBeenCalledWith("old/n.md");
+    expect(env.VAULT_BUCKET.put).toHaveBeenCalledWith(
+      "new/n.md",
+      r2Body,
+      expect.objectContaining({ httpMetadata: { contentType: "text/markdown" } }),
+    );
+    expect(env.VAULT_BUCKET.delete).toHaveBeenCalledWith("old/n.md");
+  });
+
+  it("does not touch R2 when path is unchanged", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ path: "n.md" }]), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([{ id: "abc", path: "n.md" }]), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files/abc", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: "n.md" }),
+    });
+    await handleFiles(req, env, new URL(req.url));
+    expect(env.VAULT_BUCKET.get).not.toHaveBeenCalled();
+    expect(env.VAULT_BUCKET.put).not.toHaveBeenCalled();
+    expect(env.VAULT_BUCKET.delete).not.toHaveBeenCalled();
+  });
+
+  it("does not touch R2 when body has no path field", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([{ id: "abc", folder: "Inbox" }]), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files/abc", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ folder: "Inbox" }),
+    });
+    await handleFiles(req, env, new URL(req.url));
+    expect(env.VAULT_BUCKET.get).not.toHaveBeenCalled();
+  });
+});
+
+describe("handleFiles — DELETE /files?path=", () => {
+  it("looks up by path, deletes R2 object, then deletes DB row", async () => {
+    const fetchMock = vi
+      .fn()
+      // 1st call: db.query by path
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([{ id: "row-1", path: "notes/x.md" }]), { status: 200 }),
+      )
+      // 2nd call: db.delete
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files?path=notes/x.md", {
+      method: "DELETE",
+    });
+    const res = await handleFiles(req, env, new URL(req.url));
+    expect(res.status).toBe(204);
+    expect(env.VAULT_BUCKET.delete).toHaveBeenCalledWith("notes/x.md");
+    const calls = fetchMock.mock.calls as unknown[][];
+    const queryUrl = String(calls[0]?.[0] ?? "");
+    expect(queryUrl).toContain("path=eq.notes%2Fx.md");
+  });
+
+  it("returns 204 idempotently when no row matches the path", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response("[]", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files?path=missing.md", {
+      method: "DELETE",
+    });
+    const res = await handleFiles(req, env, new URL(req.url));
+    expect(res.status).toBe(204);
+    expect(env.VAULT_BUCKET.delete).not.toHaveBeenCalled();
+  });
+
+  it("rejects with 400 when path query param is missing", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files", { method: "DELETE" });
+    const res = await handleFiles(req, env, new URL(req.url));
+    expect(res.status).toBe(400);
+  });
+});
+
 describe("handleFiles — GET /files/:id", () => {
   it("returns 404 when supabase returns empty array", async () => {
     vi.stubGlobal(

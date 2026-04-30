@@ -32,12 +32,19 @@ async function patch<T>(path: string, body: unknown): Promise<T> {
   return res.json();
 }
 
+async function del(path: string): Promise<void> {
+  const res = await fetch(`${BASE}${path}`, { method: "DELETE", headers: h });
+  if (!res.ok) throw new Error(`DELETE ${path} failed: ${res.status}`);
+}
+
 export const api = {
   files: {
     list: () => get<VaultFile[]>("/files"),
     get: (id: string) => get<VaultFile>(`/files/${id}`),
     linksForFile: (id: string) => get<Link[]>(`/links/for-file/${id}`),
     patch: (id: string, body: Partial<VaultFile>) => patch<VaultFile>(`/files/${id}`, body),
+    rename: (id: string, newPath: string) => patch<VaultFile>(`/files/${id}`, { path: newPath }),
+    delete: (id: string) => del(`/files/${id}`),
   },
   search: {
     query: (q: string, limit = 5) =>

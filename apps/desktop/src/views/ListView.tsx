@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
+import { invoke } from "@tauri-apps/api/core";
 import type { Link, VaultFile } from "../../../../packages/shared/src/types";
 import { api } from "../api";
 
@@ -7,9 +8,11 @@ interface Props {
   files: VaultFile[];
   selectedFile: VaultFile | null;
   onSelect: (f: VaultFile) => void;
+  vaultPath: string | null;
+  onChange: () => void;
 }
 
-export function ListView({ files, selectedFile, onSelect }: Props) {
+export function ListView({ files, selectedFile, onSelect, vaultPath, onChange }: Props) {
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
   const [links, setLinks] = useState<Link[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
@@ -25,7 +28,6 @@ export function ListView({ files, selectedFile, onSelect }: Props) {
       setPreview(null);
       return;
     }
-
     api.files
       .linksForFile(selectedFile.id)
       .then(setLinks)
@@ -47,6 +49,7 @@ export function ListView({ files, selectedFile, onSelect }: Props) {
     <div style={styles.container}>
       <div style={styles.sidebar}>
         <div
+          className="hover-bg"
           style={{ ...styles.folderItem, ...(currentFolder === null ? styles.folderActive : {}) }}
           onClick={() => setCurrentFolder(null)}
         >
@@ -55,6 +58,7 @@ export function ListView({ files, selectedFile, onSelect }: Props) {
         {folders.map((folder) => (
           <div
             key={folder}
+            className="hover-bg"
             style={{
               ...styles.folderItem,
               ...(currentFolder === folder ? styles.folderActive : {}),
@@ -64,7 +68,6 @@ export function ListView({ files, selectedFile, onSelect }: Props) {
             {folder}
           </div>
         ))}
-
         <div style={styles.fileList}>
           {folderFiles.map((file) => (
             <FileRow
@@ -95,8 +98,15 @@ export function ListView({ files, selectedFile, onSelect }: Props) {
                 ))}
               </div>
             )}
+            <FileActions
+              file={selectedFile}
+              files={files}
+              vaultPath={vaultPath}
+              onChange={onChange}
+              onSelect={onSelect}
+            />
             {preview && (
-              <div style={styles.markdown}>
+              <div className="markdown-body" style={styles.markdown}>
                 <ReactMarkdown>{preview}</ReactMarkdown>
               </div>
             )}
@@ -128,6 +138,97 @@ export function ListView({ files, selectedFile, onSelect }: Props) {
   );
 }
 
+function FileActions({
+  file,
+  files,
+  vaultPath,
+  onChange,
+  onSelect,
+}: {
+  file: VaultFile;
+  files: VaultFile[];
+  vaultPath: string | null;
+  onChange: () => void;
+  onSelect: (f: VaultFile) => void;
+}) {
+  const [busy, setBusy] = useState<"open" | "rename" | "delete" | null>(null);
+
+  const handleOpen = async () => {
+    if (!vaultPath) return;
+    setBusy("open");
+    try {
+      const sep = vaultPath.includes("\\") && !vaultPath.includes("/") ? "\\" : "/";
+      const localized = file.path.replaceAll("/", sep);
+      const fullPath = `${vaultPath}${sep}${localized}`;
+      await invoke("open_in_default_app", { path: fullPath });
+    } catch (e) {
+      window.alert(`Could not open: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleRename = async () => {
+    const next = window.prompt("New path (relative to vault)", file.path);
+    if (!next || next === file.path) return;
+    const trimmed = next.trim();
+    if (!trimmed) return;
+    if (files.some((f) => f.id !== file.id && f.path === trimmed)) {
+      window.alert(`Another file already has the path "${trimmed}".`);
+      return;
+    }
+    setBusy("rename");
+    try {
+      const updated = await api.files.rename(file.id, trimmed);
+      await invoke("force_pull").catch(() => {});
+      onChange();
+      const renamed = Array.isArray(updated) ? updated[0] : updated;
+      if (renamed) onSelect(renamed);
+    } catch (e) {
+      window.alert(`Rename failed: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm(`Delete "${file.path}"? This removes it from R2 and Supabase.`)) return;
+    setBusy("delete");
+    try {
+      await api.files.delete(file.id);
+      await invoke("force_pull").catch(() => {});
+      onChange();
+    } catch (e) {
+      window.alert(`Delete failed: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div style={styles.actions}>
+      <button
+        className="btn-action"
+        disabled={!vaultPath || busy !== null}
+        onClick={handleOpen}
+        title={vaultPath ? "Open in OS default app" : "Choose a vault folder first"}
+      >
+        {busy === "open" ? "Opening..." : "Open in editor"}
+      </button>
+      <button className="btn-action" disabled={busy !== null} onClick={handleRename}>
+        {busy === "rename" ? "Renaming..." : "Rename"}
+      </button>
+      <button
+        className="btn-action btn-action-danger"
+        disabled={busy !== null}
+        onClick={handleDelete}
+      >
+        {busy === "delete" ? "Deleting..." : "Delete"}
+      </button>
+    </div>
+  );
+}
+
 function FileRow({
   file,
   selected,
@@ -141,7 +242,8 @@ function FileRow({
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
   return (
     <div
-      style={{ ...styles.fileRow, ...(selected ? styles.fileRowSelected : {}) }}
+      className={["file-row", selected ? "selected" : ""].join(" ")}
+      style={styles.fileRow}
       onClick={() => onSelect(file)}
     >
       <span style={styles.fileIcon}>{extIcon(ext)}</span>
@@ -163,6 +265,7 @@ function ConnectionRow({
   const otherId = link.file_a_id === currentFileId ? link.file_b_id : link.file_a_id;
   return (
     <div
+      className="conn-row"
       style={styles.connRow}
       onClick={() =>
         api.files
@@ -222,32 +325,49 @@ function extIcon(ext: string): string {
 }
 
 const styles: Record<string, React.CSSProperties> = {
-  container: { display: "flex", height: "100%", overflow: "hidden" },
-  sidebar: { width: 300, borderRight: "1px solid #2a2a2a", overflowY: "auto", padding: "12px 0" },
+  container: { display: "flex", height: "100%", overflow: "hidden", background: "var(--bg-base)" },
+  sidebar: {
+    width: 300,
+    borderRight: "1px solid var(--border-color)",
+    overflowY: "auto",
+    padding: "var(--spacing-3) 0",
+    background: "var(--bg-surface)",
+  },
   folderItem: {
-    padding: "8px 16px",
+    padding: "var(--spacing-2) var(--spacing-4)",
     cursor: "pointer",
     fontSize: 13,
-    color: "#aaa",
+    color: "var(--text-secondary)",
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
+    transition: "background var(--transition-fast), color var(--transition-fast)",
   },
-  folderActive: { background: "#1e1e1e", color: "#fff" },
-  fileList: { marginTop: 8, borderTop: "1px solid #222", paddingTop: 8 },
+  folderActive: {
+    background: "var(--bg-surface-active)",
+    color: "var(--text-primary)",
+    fontWeight: 500,
+  },
+  fileList: {
+    marginTop: "var(--spacing-2)",
+    borderTop: "1px solid var(--border-color)",
+    paddingTop: "var(--spacing-2)",
+  },
   fileRow: {
     display: "flex",
     alignItems: "center",
-    gap: 8,
-    padding: "6px 16px",
+    gap: "var(--spacing-2)",
+    padding: "var(--spacing-2) var(--spacing-4)",
     cursor: "pointer",
     fontSize: 13,
+    transition: "background var(--transition-fast), border var(--transition-fast)",
+    borderLeft: "3px solid transparent",
+    color: "var(--text-primary)",
   },
-  fileRowSelected: { background: "#1e3a5f" },
   fileIcon: {
-    color: "#8ab4ff",
-    border: "1px solid #2a3d5e",
-    borderRadius: 4,
+    color: "var(--accent-primary)",
+    border: "1px solid var(--border-color)",
+    borderRadius: "var(--radius-sm)",
     padding: "1px 4px",
     fontSize: 10,
     fontWeight: 700,
@@ -256,58 +376,99 @@ const styles: Record<string, React.CSSProperties> = {
     flexShrink: 0,
   },
   fileName: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
-  fileSize: { color: "#666", fontSize: 11, flexShrink: 0 },
-  empty: { padding: "16px", color: "#555", fontSize: 13 },
-  detail: { flex: 1, overflowY: "auto", padding: 24 },
-  filename: { fontSize: 20, fontWeight: 600, marginBottom: 6 },
-  meta: { color: "#666", fontSize: 12, marginBottom: 16 },
-  tags: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 },
+  fileSize: { color: "var(--text-muted)", fontSize: 11, flexShrink: 0 },
+  empty: {
+    padding: "var(--spacing-4)",
+    color: "var(--text-muted)",
+    fontSize: 13,
+    textAlign: "center",
+  },
+  detail: { flex: 1, overflowY: "auto", padding: "var(--spacing-8)", background: "var(--bg-base)" },
+  filename: {
+    fontSize: 28,
+    fontWeight: 700,
+    marginBottom: "var(--spacing-2)",
+    color: "var(--text-primary)",
+  },
+  meta: {
+    color: "var(--text-muted)",
+    fontSize: 13,
+    marginBottom: "var(--spacing-4)",
+    display: "flex",
+    gap: "var(--spacing-2)",
+  },
+  tags: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: "var(--spacing-4)" },
   tag: {
-    color: "#9ec5ff",
-    background: "#152033",
-    border: "1px solid #263b5c",
+    color: "var(--accent-primary)",
+    background: "var(--bg-surface)",
+    border: "1px solid var(--border-color)",
     borderRadius: 999,
     padding: "3px 8px",
     fontSize: 12,
   },
+  actions: {
+    display: "flex",
+    gap: "var(--spacing-2)",
+    marginBottom: "var(--spacing-6)",
+    flexWrap: "wrap",
+  },
   markdown: {
-    background: "#111",
-    borderRadius: 8,
-    padding: 16,
-    fontSize: 14,
-    lineHeight: 1.7,
-    marginBottom: 20,
+    background: "var(--bg-surface)",
+    borderRadius: "var(--radius-lg)",
+    padding: "var(--spacing-6)",
+    fontSize: 15,
+    lineHeight: 1.8,
+    marginBottom: "var(--spacing-6)",
+    color: "var(--text-secondary)",
+    boxShadow: "var(--shadow-sm)",
+    border: "1px solid var(--border-color)",
   },
   nonText: {
-    color: "#888",
-    background: "#111",
-    border: "1px solid #252525",
-    borderRadius: 8,
-    padding: 16,
+    color: "var(--text-secondary)",
+    background: "var(--bg-surface)",
+    border: "1px solid var(--border-color)",
+    borderRadius: "var(--radius-lg)",
+    padding: "var(--spacing-6)",
     fontSize: 14,
-    marginBottom: 20,
+    marginBottom: "var(--spacing-6)",
   },
-  connections: { borderTop: "1px solid #2a2a2a", paddingTop: 16 },
+  connections: { borderTop: "1px solid var(--border-color)", paddingTop: "var(--spacing-6)" },
   connectionsTitle: {
-    fontSize: 13,
-    fontWeight: 600,
-    color: "#888",
-    marginBottom: 10,
+    fontSize: 12,
+    fontWeight: 700,
+    color: "var(--text-muted)",
+    marginBottom: "var(--spacing-3)",
     textTransform: "uppercase",
-    letterSpacing: 0.5,
   },
   connRow: {
     display: "flex",
-    gap: 8,
-    padding: "8px 12px",
-    borderRadius: 6,
+    gap: "var(--spacing-3)",
+    padding: "var(--spacing-3) var(--spacing-4)",
+    borderRadius: "var(--radius-md)",
     cursor: "pointer",
-    fontSize: 13,
-    marginBottom: 4,
-    background: "#111",
+    fontSize: 14,
+    marginBottom: "var(--spacing-2)",
+    background: "var(--bg-surface)",
+    border: "1px solid var(--border-color)",
+    boxShadow: "var(--shadow-sm)",
+    alignItems: "center",
   },
-  connLabel: { color: "#8ab4ff", fontSize: 12, fontWeight: 700 },
-  connReason: { flex: 1, color: "#ccc" },
-  connConf: { color: "#4ade80", fontWeight: 600, fontSize: 12 },
-  placeholder: { color: "#555", textAlign: "center", marginTop: 80 },
+  connLabel: {
+    color: "var(--accent-primary)",
+    fontSize: 12,
+    fontWeight: 700,
+    background: "var(--bg-surface-active)",
+    padding: "2px 6px",
+    borderRadius: "var(--radius-sm)",
+  },
+  connReason: { flex: 1, color: "var(--text-secondary)" },
+  connConf: {
+    color: "var(--accent-success)",
+    fontWeight: 600,
+    fontSize: 13,
+    background: "rgba(16, 185, 129, 0.1)",
+    padding: "2px 6px",
+    borderRadius: "var(--radius-sm)",
+  },
+  placeholder: { color: "var(--text-muted)", textAlign: "center", marginTop: 100, fontSize: 15 },
 };
