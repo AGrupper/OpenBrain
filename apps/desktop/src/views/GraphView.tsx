@@ -20,7 +20,7 @@ export function GraphView({ files, onSelect }: Props) {
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
 
   useEffect(() => {
-    api.links.list().then((approvedLinks: Link[]) => {
+    api.links.approved().then((approvedLinks: Link[]) => {
       const linkedFileIds = new Set(approvedLinks.flatMap((l) => [l.file_a_id, l.file_b_id]));
       const nodes = files
         .filter((f) => linkedFileIds.has(f.id) || files.length < 200)

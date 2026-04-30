@@ -44,7 +44,15 @@ export const api = {
       get<{ results: SearchResult[]; total: number }>("/search", { q, limit: String(limit) }),
   },
   links: {
-    list: () => get<Link[]>("/links", { status: "approved" }),
+    approved: async () => {
+      const [approved, autoApproved] = await Promise.all([
+        get<Link[]>("/links", { status: "approved" }),
+        get<Link[]>("/links", { status: "auto_approved" }),
+      ]);
+      return [...approved, ...autoApproved];
+    },
+    pending: () => get<Link[]>("/links", { status: "pending" }),
+    update: (id: string, status: Link["status"]) => patch<Link[]>(`/links/${id}`, { status }),
   },
   corrections: {
     post: (fileId: string, field: "folder" | "tags", oldValue: string, newValue: string) =>

@@ -10,3 +10,4 @@ Thumbs.db
 *.log
 .wrangler/
 .claude/settings.local.json
+.claude/worktrees/

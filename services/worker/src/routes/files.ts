@@ -79,6 +79,23 @@ export function readUploadHeaders(request: Request): UploadMetadata | null {
   return { path, sha256, size, mime };
 }
 
+export function folderFromPath(path: string): string | null {
+  const normalized = path.replaceAll("\\", "/");
+  const idx = normalized.lastIndexOf("/");
+  if (idx <= 0) return null;
+  return normalized.slice(0, idx);
+}
+
+function shouldStoreTextContent(mime: string, path: string): boolean {
+  const lowerPath = path.toLowerCase();
+  return (
+    mime.startsWith("text/") ||
+    lowerPath.endsWith(".md") ||
+    lowerPath.endsWith(".markdown") ||
+    lowerPath.endsWith(".txt")
+  );
+}
+
 function db(env: Env) {
   const base = env.SUPABASE_URL;
   const key = env.SUPABASE_SERVICE_KEY;
@@ -203,11 +220,16 @@ export async function handleFiles(request: Request, env: Env, url: URL): Promise
         httpMetadata: { contentType: meta.mime },
         sha256: meta.sha256,
       });
+      const textContent = shouldStoreTextContent(meta.mime, meta.path)
+        ? new TextDecoder().decode(blob)
+        : null;
       const rows = (await db(env).upsert("files", {
         path: meta.path,
         size: meta.size,
         sha256: meta.sha256,
         mime: meta.mime,
+        folder: folderFromPath(meta.path),
+        text_content: textContent,
         updated_at: new Date().toISOString(),
         needs_embedding: true,
         needs_linking: true,

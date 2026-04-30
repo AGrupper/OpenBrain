@@ -5,6 +5,7 @@ import {
   parseFilesQuery,
   isValidEmbedding,
   EMBEDDING_DIMENSIONS,
+  folderFromPath,
 } from "./files";
 import type { Env } from "../index";
 
@@ -92,6 +93,16 @@ describe("readUploadHeaders", () => {
   });
 });
 
+describe("folderFromPath", () => {
+  it("returns null for root files", () => {
+    expect(folderFromPath("note.md")).toBeNull();
+  });
+
+  it("returns the parent folder for nested files", () => {
+    expect(folderFromPath("Projects/OpenBrain/prd.md")).toBe("Projects/OpenBrain");
+  });
+});
+
 describe("handleFiles — PUT /files/upload", () => {
   let fetchMock: Mock;
 
@@ -149,6 +160,27 @@ describe("handleFiles — PUT /files/upload", () => {
       expect.objectContaining({ sha256: "deadbeef" }),
     );
     expect(fetchMock).toHaveBeenCalled();
+  });
+
+  it("derives folder and stores searchable text content for text uploads", async () => {
+    const env = makeEnv();
+    const body = "# Project note";
+    const req = makeRequest("https://api.openbrain.dev/files/upload", {
+      method: "PUT",
+      headers: {
+        "X-File-Path": "Projects/OpenBrain/note.md",
+        "X-File-Sha256": "deadbeef",
+        "X-File-Size": String(body.length),
+        "Content-Type": "text/markdown",
+      },
+      body,
+    });
+    const res = await handleFiles(req, env, new URL(req.url));
+    expect(res.status).toBe(201);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+      folder: "Projects/OpenBrain",
+      text_content: body,
+    });
   });
 });
 

@@ -1,6 +1,8 @@
 # OpenBrain
 
-A personal knowledge-management system that syncs your local vault to the cloud, links related notes automatically, and surfaces connections via semantic search.
+A personal knowledge-management system for importing files, browsing a cloud-backed vault, approving AI-suggested connections, and surfacing knowledge via semantic search.
+
+See [PRD.md](PRD.md) for the product guardrail and [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) for a plain-English repo map.
 
 ## Architecture
 
@@ -12,7 +14,7 @@ infra/supabase/        Postgres schema (pgvector) + SQL migrations
 packages/shared/       Shared TypeScript types
 ```
 
-**Data flow:** Desktop watches your vault folder → uploads new/changed files to Cloudflare Worker → Worker stores blobs in R2 and metadata in Supabase → Friday cron embeds each file, finds semantic neighbors, asks Claude if they're related, proposes links via Telegram → you approve/reject in Telegram.
+**Data flow:** Desktop imports selected files or optionally watches a vault folder → uploads files to Cloudflare Worker → Worker stores blobs in R2 and metadata in Supabase → Friday cron embeds each file, finds semantic neighbors, asks Claude if they're related, proposes links → you approve/reject suggestions in the review workflow.
 
 ## Status
 

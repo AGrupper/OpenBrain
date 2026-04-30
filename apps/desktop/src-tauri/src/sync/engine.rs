@@ -79,8 +79,24 @@ impl SyncEngine {
         let client2 = client.clone();
         let vault2 = vault.clone();
         tokio::spawn(async move {
-            if let Err(e) = full_sync(&client2, &cfg2, &vault2).await {
-                log::error!("Initial sync error: {e}");
+            match full_sync(&client2, &cfg2, &vault2).await {
+                Ok(()) => {
+                    crate::debug_log::agent_line(
+                        "engine.rs:start",
+                        "initial full_sync ok",
+                        "P1",
+                        serde_json::json!({}),
+                    );
+                }
+                Err(e) => {
+                    log::error!("Initial sync error: {e}");
+                    crate::debug_log::agent_line(
+                        "engine.rs:start",
+                        "initial full_sync err",
+                        "P1",
+                        serde_json::json!({ "err": e.to_string() }),
+                    );
+                }
             }
         });
 
@@ -167,6 +183,15 @@ fn guess_mime(path: &Path) -> &'static str {
 
 async fn upload_file(client: &Client, cfg: &SyncConfig, vault: &Path, path: &Path) -> Result<()> {
     let rel = relative_path(vault, path);
+    upload_local_file(client, cfg, path, &rel).await
+}
+
+pub async fn upload_local_file(
+    client: &Client,
+    cfg: &SyncConfig,
+    path: &Path,
+    remote_path: &str,
+) -> Result<()> {
     let bytes = tokio::fs::read(path).await.context("read file")?;
     let sha = sha256_file(path)?;
     let size = bytes.len() as u64;
@@ -176,7 +201,7 @@ async fn upload_file(client: &Client, cfg: &SyncConfig, vault: &Path, path: &Pat
         .put(format!("{}/files/upload", cfg.api_url))
         .header("Authorization", format!("Bearer {}", cfg.auth_token))
         .header("Content-Type", mime)
-        .header("X-File-Path", &rel)
+        .header("X-File-Path", remote_path)
         .header("X-File-Sha256", &sha)
         .header("X-File-Size", size.to_string())
         .body(bytes)
@@ -184,20 +209,76 @@ async fn upload_file(client: &Client, cfg: &SyncConfig, vault: &Path, path: &Pat
         .await?
         .error_for_status()?;
 
-    log::info!("Uploaded: {rel}");
+    log::info!("Uploaded: {remote_path}");
     Ok(())
 }
 
 async fn pull_remote(client: &Client, cfg: &SyncConfig, vault: &Path) -> Result<()> {
+    let list_url = format!("{}/files", cfg.api_url);
+    // #region agent log
+    crate::debug_log::agent_line(
+        "engine.rs:pull_remote",
+        "list request",
+        "P5",
+        serde_json::json!({
+            "api_url_empty": cfg.api_url.is_empty(),
+            "api_url_trailing_slash": cfg.api_url.ends_with('/'),
+            "list_url_len": list_url.len(),
+        }),
+    );
+    // #endregion
     let resp = client
-        .get(format!("{}/files", cfg.api_url))
+        .get(&list_url)
         .header("Authorization", format!("Bearer {}", cfg.auth_token))
         .send()
-        .await?
-        .error_for_status()?
+        .await
+        .map_err(|e| {
+            // #region agent log
+            crate::debug_log::agent_line(
+                "engine.rs:pull_remote",
+                "list send err",
+                "P2",
+                serde_json::json!({ "err": e.to_string() }),
+            );
+            // #endregion
+            e
+        })?
+        .error_for_status()
+        .map_err(|e| {
+            // #region agent log
+            crate::debug_log::agent_line(
+                "engine.rs:pull_remote",
+                "list status err",
+                "P2",
+                serde_json::json!({ "err": e.to_string() }),
+            );
+            // #endregion
+            e
+        })?
         .json::<Vec<RemoteFile>>()
-        .await?;
+        .await
+        .map_err(|e| {
+            // #region agent log
+            crate::debug_log::agent_line(
+                "engine.rs:pull_remote",
+                "list json err",
+                "P2",
+                serde_json::json!({ "err": e.to_string() }),
+            );
+            // #endregion
+            e
+        })?;
 
+    // #region agent log
+    crate::debug_log::agent_line(
+        "engine.rs:pull_remote",
+        "remote file list",
+        "P2",
+        serde_json::json!({ "remote_count": resp.len() }),
+    );
+    // #endregion
+
+    let mut pulled: u32 = 0;
     for remote in resp {
         let local_path = vault.join(remote.path.replace('/', std::path::MAIN_SEPARATOR_STR));
         if local_path.exists() {
@@ -211,25 +292,93 @@ async fn pull_remote(client: &Client, cfg: &SyncConfig, vault: &Path) -> Result<
         }
 
         // Download remote version
-        let bytes = client
-            .get(format!("{}/files/{}/download", cfg.api_url, remote.id))
+        let dl_url = format!("{}/files/{}/download", cfg.api_url, remote.id);
+        let bytes = match client
+            .get(&dl_url)
             .header("Authorization", format!("Bearer {}", cfg.auth_token))
             .send()
-            .await?
-            .error_for_status()?
-            .bytes()
-            .await?;
+            .await
+        {
+            Ok(r) => r,
+            Err(e) => {
+                // #region agent log
+                crate::debug_log::agent_line(
+                    "engine.rs:pull_remote",
+                    "download send err",
+                    "P4",
+                    serde_json::json!({
+                        "path_len": remote.path.len(),
+                        "err": e.to_string(),
+                    }),
+                );
+                // #endregion
+                return Err(e.into());
+            }
+        }
+        .error_for_status()
+        .map_err(|e| {
+            // #region agent log
+            crate::debug_log::agent_line(
+                "engine.rs:pull_remote",
+                "download status err",
+                "P4",
+                serde_json::json!({
+                    "path_len": remote.path.len(),
+                    "err": e.to_string(),
+                }),
+            );
+            // #endregion
+            e
+        })?
+        .bytes()
+        .await?;
 
         if let Some(parent) = local_path.parent() {
             tokio::fs::create_dir_all(parent).await?;
         }
-        tokio::fs::write(&local_path, &bytes).await?;
+        if let Err(e) = tokio::fs::write(&local_path, &bytes).await {
+            // #region agent log
+            crate::debug_log::agent_line(
+                "engine.rs:pull_remote",
+                "write local err",
+                "P4",
+                serde_json::json!({
+                    "path_len": remote.path.len(),
+                    "err": e.to_string(),
+                }),
+            );
+            // #endregion
+            return Err(e.into());
+        }
+        pulled += 1;
         log::info!("Pulled: {}", remote.path);
     }
+    // #region agent log
+    crate::debug_log::agent_line(
+        "engine.rs:pull_remote",
+        "pull complete",
+        "P2",
+        serde_json::json!({ "files_written": pulled }),
+    );
+    // #endregion
     Ok(())
 }
 
 async fn full_sync(client: &Client, cfg: &SyncConfig, vault: &Path) -> Result<()> {
+    // #region agent log
+    crate::debug_log::agent_line(
+        "engine.rs:full_sync",
+        "start",
+        "P1",
+        serde_json::json!({
+            "vault_path_len": cfg.vault_path.len(),
+            "api_url_len": cfg.api_url.len(),
+            "token_len": cfg.auth_token.len(),
+        }),
+    );
+    // #endregion
+    let mut upload_ok: u32 = 0;
+    let mut upload_err: u32 = 0;
     // Upload any local files not yet on server
     for entry in WalkDir::new(vault).into_iter().filter_map(|e| e.ok()) {
         if !entry.file_type().is_file() {
@@ -245,10 +394,22 @@ async fn full_sync(client: &Client, cfg: &SyncConfig, vault: &Path) -> Result<()
         {
             continue;
         }
-        if let Err(e) = upload_file(client, cfg, vault, path).await {
-            log::warn!("Initial upload {path:?}: {e}");
+        match upload_file(client, cfg, vault, path).await {
+            Ok(()) => upload_ok += 1,
+            Err(e) => {
+                upload_err += 1;
+                log::warn!("Initial upload {path:?}: {e}");
+            }
         }
     }
+    // #region agent log
+    crate::debug_log::agent_line(
+        "engine.rs:full_sync",
+        "after local uploads",
+        "P3",
+        serde_json::json!({ "upload_ok": upload_ok, "upload_err": upload_err }),
+    );
+    // #endregion
     // Then pull anything we're missing
     pull_remote(client, cfg, vault).await
 }

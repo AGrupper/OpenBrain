@@ -148,7 +148,7 @@ export async function handleLinks(request: Request, env: Env, url: URL): Promise
     if (method === "GET" && linkId === "for-file" && sub) {
       const rows = await db(env).query("links", {
         or: `(file_a_id.eq.${sub},file_b_id.eq.${sub})`,
-        status: "eq.approved",
+        status: "in.(approved,auto_approved)",
         select: "*",
       });
       return Response.json(rows);
