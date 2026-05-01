@@ -9,8 +9,10 @@ session so the next session can start from repo truth instead of chat history.
 - Remote: `origin/master`
 - Starting commit for this session: `c37ab89` (`Add OpenBrain session context handoff`)
 - Pushed implementation commit: `4cc6d30` (`Fix vault filename search and stale reader state`)
-- This document update is the final handoff commit for the session.
-- Working tree at verification: intentional changes only
+- Pushed handoff commit before browser smoke confirmation: `a55f089`
+  (`Update OpenBrain session context after search fix`)
+- Final handoff update records the browser smoke confirmation.
+- Working tree at final handoff: clean after commit and push
 
 ## Completed
 
@@ -32,6 +34,7 @@ session so the next session can start from repo truth instead of chat history.
 - The desktop reader now avoids rendering failed download responses as Markdown preview text.
 - The desktop app now reconciles the selected reader file after vault reloads, so deleted files do
   not stay selected after the list refreshes.
+- Browser smoke confirmed the latest search and reader fixes work in the running app.
 
 ## Verified
 
@@ -54,11 +57,10 @@ Manual smoke verified:
 - Imported files open in the reader.
 - Content search for text inside a Markdown file worked in the desktop app before the filename
   search fix.
-- Filename/path search is covered by Worker route tests after this fix; rerun browser smoke for
-  `testrename.md` in the next app session to confirm the full UI path.
+- Filename/path search works in the desktop app after the fix.
 - Rename worked in the desktop app before this fix.
-- Delete removed the file from the list; this fix improves the stale selected-reader state after
-  deletion.
+- Delete removed the file from the list; the stale selected-reader state is fixed after the latest
+  browser smoke.
 - Review Inbox loads and shows the correct empty state when no pending suggestions exist.
 - Graph loads without crashing with the current one-file vault.
 - Settings masks the local auth token.
@@ -76,18 +78,14 @@ Manual smoke verified:
 
 Start with the working import/list/reader loop and move outward:
 
-1. Browser-smoke the latest search and reader fixes:
-   - Search for text inside an imported Markdown file.
-   - Search for the imported file name, such as `testrename.md`.
-   - Delete a scratch file and confirm the reader clears instead of showing raw `Not found`.
-2. Move to Review Inbox and Architect suggestions:
+1. Move to Review Inbox and Architect suggestions:
    - Run `services/architect-agent` jobs against imported files.
    - Confirm pending suggestions appear in Review Inbox.
    - Confirm approving/rejecting suggestions updates Worker/Supabase state correctly.
-3. Verify approved relationship surfaces:
+2. Verify approved relationship surfaces:
    - Create or approve at least one link suggestion.
    - Confirm approved links appear in the reader and Graph view.
-4. Verify vault-grounded Architect chat:
+3. Verify vault-grounded Architect chat:
    - Ask a question answerable from imported vault content and confirm source citations.
    - Ask an unsupported question and confirm The Architect refuses unsupported vault claims.
 
