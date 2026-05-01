@@ -8,7 +8,8 @@ session so the next session can start from repo truth instead of chat history.
 - Branch: `master`
 - Remote: `origin/master`
 - Starting commit for this session: `c37ab89` (`Add OpenBrain session context handoff`)
-- Handoff commit for this session: `Fix vault filename search and stale reader state`
+- Pushed implementation commit: `4cc6d30` (`Fix vault filename search and stale reader state`)
+- This document update is the final handoff commit for the session.
 - Working tree at verification: intentional changes only
 
 ## Completed
