@@ -2,6 +2,8 @@ node_modules/
 dist/
 .env
 *.env.local
+.dev.vars
+.dev.var
 .secrets.local
 *.secrets.local
 target/
