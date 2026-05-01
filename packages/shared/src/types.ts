@@ -1,4 +1,7 @@
-export type FileStatus = "synced" | "pending_upload" | "pending_download" | "conflict";
+export type FileStatus = "stored" | "pending_upload" | "processing" | "error";
+export type ArchitectJobStatus = "pending" | "processing" | "suggestions_created" | "failed";
+export type ArchitectSuggestionStatus = "pending" | "approved" | "rejected";
+export type ArchitectSuggestionType = "summary" | "tags" | "folder" | "link" | "action" | "cleanup";
 
 export interface VaultFile {
   id: string;
@@ -36,6 +39,50 @@ export interface LinkProposal {
   reason: string;
 }
 
+export interface ArchitectJob {
+  id: string;
+  file_id: string;
+  status: ArchitectJobStatus;
+  error?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ArchitectSuggestion {
+  id: string;
+  file_id?: string | null;
+  type: ArchitectSuggestionType;
+  title: string;
+  reason: string;
+  payload: Record<string, unknown>;
+  confidence?: number | null;
+  status: ArchitectSuggestionStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ArchitectChatSource {
+  file_id: string;
+  path: string;
+  snippet: string;
+  score?: number;
+}
+
+export interface ArchitectChatMessage {
+  id?: string;
+  session_id: string;
+  role: "user" | "architect";
+  content: string;
+  sources?: ArchitectChatSource[];
+  created_at?: string;
+}
+
+export interface ArchitectChatResponse {
+  session_id: string;
+  answer: string;
+  sources: ArchitectChatSource[];
+}
+
 export interface SearchResult {
   file: VaultFile;
   score: number;
@@ -49,12 +96,6 @@ export interface Correction {
   old_value: string;
   new_value: string;
   created_at: string;
-}
-
-export interface SyncState {
-  last_sync_at: string;
-  device_id: string;
-  vault_path: string;
 }
 
 // API request/response shapes

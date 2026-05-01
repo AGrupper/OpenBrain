@@ -1,21 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { AppHeader, type ViewMode } from "./components/AppHeader";
-import { SyncBar, type SyncStatus } from "./components/SyncBar";
-import { api } from "./lib/api";
-import { GraphView } from "./views/GraphView";
-import { ListView } from "./views/ListView";
-import { ReviewInbox } from "./views/ReviewInbox";
-import { SearchBar } from "./views/SearchBar";
+import { AppHeader, type ViewMode } from "../components/AppHeader";
+import { ImportBar } from "../components/ImportBar";
+import { api } from "../lib/api";
+import { ArchitectChat } from "../views/ArchitectChat";
+import { GraphView } from "../views/GraphView";
+import { ListView } from "../views/ListView";
+import { ReviewInbox } from "../views/ReviewInbox";
+import { SearchBar } from "../views/SearchBar";
 import {
   SettingsModal,
   applyTheme,
   loadTheme,
   persistTheme,
   type Theme,
-} from "./views/SettingsModal";
-import type { VaultFile } from "../../../packages/shared/src/types";
+} from "../views/SettingsModal";
+import type { VaultFile } from "../../../../packages/shared/src/types";
 
 export default function App() {
   const [view, setView] = useState<ViewMode>("list");
@@ -23,9 +24,7 @@ export default function App() {
   const [selectedFile, setSelectedFile] = useState<VaultFile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [vaultPath, setVaultPath] = useState<string | null>(null);
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
-  const [syncError, setSyncError] = useState<string | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => loadTheme());
@@ -43,63 +42,7 @@ export default function App() {
     applyTheme(theme);
   }, [theme]);
 
-  useEffect(() => {
-    let cancelled = false;
-
-    async function boot() {
-      try {
-        let path = await invoke<string | null>("get_vault_path");
-        if (cancelled) return;
-
-        if (!path) {
-          path = await invoke<string | null>("get_persisted_vault_path");
-          if (cancelled) return;
-        }
-
-        if (path) await startSync(path, cancelled);
-      } catch {
-        // Browser preview or missing Tauri runtime; continue with cloud API views.
-      }
-
-      if (!cancelled) loadFiles();
-    }
-
-    void boot();
-    return () => {
-      cancelled = true;
-    };
-  }, [loadFiles]);
-
-  const startSync = async (path: string, cancelled = false) => {
-    setSyncStatus("starting");
-    setSyncError(null);
-    try {
-      await invoke("start_sync", {
-        vaultPath: path,
-        apiUrl: import.meta.env.VITE_API_URL ?? "",
-        authToken: import.meta.env.VITE_AUTH_TOKEN ?? "",
-      });
-      if (cancelled) return;
-      setVaultPath(path);
-      setSyncStatus("running");
-    } catch (e) {
-      if (cancelled) return;
-      setVaultPath(null);
-      setSyncStatus("error");
-      setSyncError(String(e));
-    }
-  };
-
-  const handleChooseVault = async () => {
-    const selected = await openDialog({
-      directory: true,
-      multiple: false,
-      title: "Choose vault folder",
-    });
-    if (!selected || typeof selected !== "string") return;
-    await startSync(selected);
-    loadFiles();
-  };
+  useEffect(() => loadFiles(), [loadFiles]);
 
   const handleAddFiles = async () => {
     const selected = await openDialog({
@@ -111,7 +54,7 @@ export default function App() {
     if (!filePaths.length) return;
 
     setImportStatus(`Importing ${filePaths.length} file${filePaths.length === 1 ? "" : "s"}...`);
-    setSyncError(null);
+    setImportError(null);
     try {
       const summary = await invoke<{ imported: number; failed: number }>("import_files", {
         filePaths,
@@ -122,19 +65,7 @@ export default function App() {
       loadFiles();
     } catch (e) {
       setImportStatus(null);
-      setSyncError(String(e));
-    }
-  };
-
-  const handleStopSync = async () => {
-    setSyncStatus("stopping");
-    try {
-      await invoke("stop_sync");
-      setVaultPath(null);
-      setSyncStatus("idle");
-    } catch (e) {
-      setSyncStatus("error");
-      setSyncError(String(e));
+      setImportError(String(e));
     }
   };
 
@@ -151,15 +82,7 @@ export default function App() {
   return (
     <div style={styles.shell}>
       <AppHeader view={view} onViewChange={setView} onOpenSettings={() => setSettingsOpen(true)} />
-      <SyncBar
-        vaultPath={vaultPath}
-        status={syncStatus}
-        error={syncError}
-        importStatus={importStatus}
-        onAddFiles={handleAddFiles}
-        onChoose={handleChooseVault}
-        onStop={handleStopSync}
-      />
+      <ImportBar error={importError} importStatus={importStatus} onAddFiles={handleAddFiles} />
       <SearchBar onSelect={selectInReader} />
       <main style={styles.main}>
         {loading && <div style={styles.center}>Loading vault...</div>}
@@ -169,7 +92,6 @@ export default function App() {
             files={files}
             selectedFile={selectedFile}
             onSelect={setSelectedFile}
-            vaultPath={vaultPath}
             onChange={loadFiles}
           />
         )}
@@ -177,18 +99,14 @@ export default function App() {
           <GraphView files={files} onSelect={selectInReader} />
         )}
         {!loading && !error && view === "review" && <ReviewInbox onSelectFile={selectInReader} />}
+        {!loading && !error && view === "chat" && <ArchitectChat onSelectFile={selectInReader} />}
       </main>
       <SettingsModal
         open={settingsOpen}
-        vaultPath={vaultPath}
         apiUrl={(import.meta.env.VITE_API_URL as string) ?? ""}
         authTokenPresent={Boolean(import.meta.env.VITE_AUTH_TOKEN)}
         theme={theme}
         onThemeChange={handleThemeChange}
-        onChooseVault={() => {
-          setSettingsOpen(false);
-          void handleChooseVault();
-        }}
         onClose={() => setSettingsOpen(false)}
       />
     </div>

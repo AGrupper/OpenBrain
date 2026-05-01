@@ -209,9 +209,9 @@ button {
 }
 
 /* ═══════════════════════════════════════════
-   Sync Bar
+   Import Bar
    ═══════════════════════════════════════════ */
-.sync-bar {
+.import-bar {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -241,23 +241,6 @@ button {
   background: linear-gradient(135deg, var(--accent-primary-hover) 0%, #4338ca 100%);
   box-shadow: 0 4px 16px rgba(99, 102, 241, 0.4);
   transform: translateY(-1px);
-}
-
-.btn-stop {
-  padding: 6px 14px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-highlight);
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 500;
-  transition: all var(--transition-fast);
-}
-.btn-stop:hover {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: var(--accent-danger);
-  color: var(--accent-danger);
 }
 
 .btn-action {

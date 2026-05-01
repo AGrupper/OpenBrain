@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { ApiError, isDuplicateLinkError } from "./linker";
+import { ApiError, isDuplicateLinkError } from "../src/jobs/linker";
 
 describe("isDuplicateLinkError", () => {
   it("identifies a 409 with Postgres unique-violation code", () => {

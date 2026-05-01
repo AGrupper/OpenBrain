@@ -1,22 +1,21 @@
 {
-  "name": "@openbrain/friday-cron",
+  "name": "@openbrain/architect-agent",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "link": "tsx linker.ts",
-    "tag": "tsx tagger.ts",
+    "link": "tsx src/jobs/linker.ts",
+    "tag": "tsx src/jobs/tagger.ts",
+    "run": "npm run link && npm run tag",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@openbrain/shared": "*",
-    "node-telegram-bot-api": "^0.66.0"
+    "@openbrain/shared": "*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
-    "@types/node-telegram-bot-api": "^0.64.7",
     "tsx": "^4.15.0",
     "typescript": "^5.4.0",
     "vitest": "^2.0.0"

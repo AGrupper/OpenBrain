@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
-import { invoke } from "@tauri-apps/api/core";
 import type { Link, VaultFile } from "../../../../packages/shared/src/types";
 import { api } from "../lib/api";
 
@@ -8,11 +7,10 @@ interface Props {
   files: VaultFile[];
   selectedFile: VaultFile | null;
   onSelect: (f: VaultFile) => void;
-  vaultPath: string | null;
   onChange: () => void;
 }
 
-export function ListView({ files, selectedFile, onSelect, vaultPath, onChange }: Props) {
+export function ListView({ files, selectedFile, onSelect, onChange }: Props) {
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
   const [links, setLinks] = useState<Link[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
@@ -101,7 +99,6 @@ export function ListView({ files, selectedFile, onSelect, vaultPath, onChange }:
             <FileActions
               file={selectedFile}
               files={files}
-              vaultPath={vaultPath}
               onChange={onChange}
               onSelect={onSelect}
             />
@@ -141,32 +138,15 @@ export function ListView({ files, selectedFile, onSelect, vaultPath, onChange }:
 function FileActions({
   file,
   files,
-  vaultPath,
   onChange,
   onSelect,
 }: {
   file: VaultFile;
   files: VaultFile[];
-  vaultPath: string | null;
   onChange: () => void;
   onSelect: (f: VaultFile) => void;
 }) {
-  const [busy, setBusy] = useState<"open" | "rename" | "delete" | null>(null);
-
-  const handleOpen = async () => {
-    if (!vaultPath) return;
-    setBusy("open");
-    try {
-      const sep = vaultPath.includes("\\") && !vaultPath.includes("/") ? "\\" : "/";
-      const localized = file.path.replaceAll("/", sep);
-      const fullPath = `${vaultPath}${sep}${localized}`;
-      await invoke("open_in_default_app", { path: fullPath });
-    } catch (e) {
-      window.alert(`Could not open: ${String(e)}`);
-    } finally {
-      setBusy(null);
-    }
-  };
+  const [busy, setBusy] = useState<"rename" | "delete" | null>(null);
 
   const handleRename = async () => {
     const next = window.prompt("New path (relative to vault)", file.path);
@@ -180,7 +160,6 @@ function FileActions({
     setBusy("rename");
     try {
       const updated = await api.files.rename(file.id, trimmed);
-      await invoke("force_pull").catch(() => {});
       onChange();
       const renamed = Array.isArray(updated) ? updated[0] : updated;
       if (renamed) onSelect(renamed);
@@ -196,7 +175,6 @@ function FileActions({
     setBusy("delete");
     try {
       await api.files.delete(file.id);
-      await invoke("force_pull").catch(() => {});
       onChange();
     } catch (e) {
       window.alert(`Delete failed: ${String(e)}`);
@@ -207,14 +185,6 @@ function FileActions({
 
   return (
     <div style={styles.actions}>
-      <button
-        className="btn-action"
-        disabled={!vaultPath || busy !== null}
-        onClick={handleOpen}
-        title={vaultPath ? "Open in OS default app" : "Choose a vault folder first"}
-      >
-        {busy === "open" ? "Opening..." : "Open in editor"}
-      </button>
       <button className="btn-action" disabled={busy !== null} onClick={handleRename}>
         {busy === "rename" ? "Renaming..." : "Rename"}
       </button>

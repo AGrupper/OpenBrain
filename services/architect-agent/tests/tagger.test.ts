@@ -2,15 +2,15 @@
 vi.hoisted(() => {
   process.env.OPENBRAIN_API_URL = "http://test-api";
   process.env.OPENBRAIN_AUTH_TOKEN = "test-token";
-  process.env.FRIDAY_MODEL_PROVIDER = "anthropic";
-  process.env.FRIDAY_MODEL = "claude-test";
+  process.env.ARCHITECT_MODEL_PROVIDER = "anthropic";
+  process.env.ARCHITECT_MODEL = "claude-test";
   process.env.ANTHROPIC_API_KEY = "test-key";
   process.env.MAX_FILES_PER_RUN = "20";
 });
 
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { main, getRecentCorrections } from "./tagger";
-import type { VaultFile } from "../../packages/shared/src/types";
+import { main, getRecentCorrections } from "../src/jobs/tagger";
+import type { VaultFile } from "../../../packages/shared/src/types";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -92,8 +92,9 @@ describe("main", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("sends PATCH with folder, tags, and needs_tagging:false", async () => {
+  it("creates reviewable folder and tag suggestions, then clears needs_tagging", async () => {
     const file = makeFile("file-1", "notes/meeting.md");
+    const suggestionBodies: unknown[] = [];
     const patchBodies: unknown[] = [];
 
     vi.stubGlobal(
@@ -104,6 +105,10 @@ describe("main", () => {
         if (url.includes("/corrections")) return okResponse([]);
         if (url.includes("anthropic"))
           return anthropicResponse({ folder: "notes", tags: ["meeting", "work"] });
+        if (url.includes("/architect/suggestions")) {
+          suggestionBodies.push(JSON.parse(opts?.body as string));
+          return okResponse({ id: `suggestion-${suggestionBodies.length}` }, 201);
+        }
         if (url.includes(`/files/${file.id}`)) {
           patchBodies.push(JSON.parse(opts?.body as string));
           return okResponse(null, 204);
@@ -114,11 +119,18 @@ describe("main", () => {
 
     await main();
 
-    expect(patchBodies).toHaveLength(1);
-    const body = patchBodies[0] as { folder: string; tags: string[]; needs_tagging: boolean };
-    expect(body.folder).toBe("notes");
-    expect(body.tags).toEqual(["meeting", "work"]);
-    expect(body.needs_tagging).toBe(false);
+    expect(suggestionBodies).toHaveLength(2);
+    expect(suggestionBodies[0]).toMatchObject({
+      file_id: file.id,
+      type: "folder",
+      payload: { folder: "notes" },
+    });
+    expect(suggestionBodies[1]).toMatchObject({
+      file_id: file.id,
+      type: "tags",
+      payload: { tags: ["meeting", "work"] },
+    });
+    expect(patchBodies).toEqual([{ needs_tagging: false }]);
   });
 
   it("skips a file when AI call fails and continues with remaining files", async () => {
@@ -138,6 +150,7 @@ describe("main", () => {
           if (aiCallCount === 1) throw new Error("AI unavailable");
           return anthropicResponse({ folder: "docs", tags: ["b"] });
         }
+        if (url.includes("/architect/suggestions")) return okResponse({ id: "suggestion" }, 201);
         if (url.includes("/files/b")) {
           patchedIds.push("b");
           return okResponse(null, 204);
@@ -171,6 +184,7 @@ describe("main", () => {
           promptsSeen.push(reqBody.messages[0].content);
           return anthropicResponse({ folder: "projects", tags: ["alpha"] });
         }
+        if (url.includes("/architect/suggestions")) return okResponse({ id: "suggestion" }, 201);
         if (url.includes("/files/")) return okResponse(null, 204);
         throw new Error(`Unexpected fetch: ${url}`);
       }),
@@ -201,6 +215,7 @@ describe("main", () => {
           promptsSeen.push(reqBody.messages[0].content);
           return anthropicResponse({ folder: "work", tags: ["finance", "q1"] });
         }
+        if (url.includes("/architect/suggestions")) return okResponse({ id: "suggestion" }, 201);
         if (url.includes("/files/")) return okResponse(null, 204);
         throw new Error(`Unexpected fetch: ${url}`);
       }),
@@ -215,6 +230,7 @@ describe("main", () => {
 
   it("handles empty tags array from AI without crashing", async () => {
     const file = makeFile("x", "x.md");
+    const suggestionBodies: unknown[] = [];
     const patchBodies: unknown[] = [];
 
     vi.stubGlobal(
@@ -224,6 +240,10 @@ describe("main", () => {
         if (url.includes("select=folder")) return okResponse([]);
         if (url.includes("/corrections")) return okResponse([]);
         if (url.includes("anthropic")) return anthropicResponse({ folder: "misc", tags: [] });
+        if (url.includes("/architect/suggestions")) {
+          suggestionBodies.push(JSON.parse(opts?.body as string));
+          return okResponse({ id: "suggestion" }, 201);
+        }
         if (url.includes(`/files/${file.id}`)) {
           patchBodies.push(JSON.parse(opts?.body as string));
           return okResponse(null, 204);
@@ -234,7 +254,7 @@ describe("main", () => {
 
     await main();
 
-    const body = patchBodies[0] as { tags: string[] };
-    expect(body.tags).toEqual([]);
+    expect(suggestionBodies[1]).toMatchObject({ payload: { tags: [] } });
+    expect(patchBodies).toEqual([{ needs_tagging: false }]);
   });
 });

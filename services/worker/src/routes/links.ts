@@ -1,4 +1,4 @@
-import type { Env } from "../index";
+import type { Env } from "../app";
 import type { Link } from "@openbrain/shared";
 
 function db(env: Env) {
@@ -67,7 +67,7 @@ export async function handleLinks(request: Request, env: Env, url: URL): Promise
   const sub = segments[1];
 
   try {
-    // GET /links — list approved links (for graph view)
+    // GET /links - list links by status for graph and review views.
     if (method === "GET" && !linkId) {
       const status = url.searchParams.get("status") ?? "approved";
       const rows = await db(env).query("links", {
@@ -78,7 +78,7 @@ export async function handleLinks(request: Request, env: Env, url: URL): Promise
       return Response.json(rows);
     }
 
-    // POST /links/proposals — Friday creates a new proposed link
+    // POST /links/proposals - The Architect creates a proposed link.
     if (method === "POST" && linkId === "proposals" && !sub) {
       const body = (await request.json()) as {
         file_a_id: string;
@@ -87,7 +87,7 @@ export async function handleLinks(request: Request, env: Env, url: URL): Promise
         reason: string;
       };
 
-      // Check trust threshold — auto-approve obvious links if trust is established
+      // Check trust threshold - auto-approve obvious links if trust is established.
       const trustRows = (await db(env).query("trust_metrics", {
         id: "eq.1",
         select: "obvious_links_silent",
@@ -119,7 +119,7 @@ export async function handleLinks(request: Request, env: Env, url: URL): Promise
       return Response.json(link, { status: 201 });
     }
 
-    // PATCH /links/:id — Friday or Telegram webhook updates status
+    // PATCH /links/:id - desktop review or Telegram webhook updates status.
     if (method === "PATCH" && linkId && !sub) {
       const body = (await request.json()) as {
         status: Link["status"];
@@ -144,7 +144,7 @@ export async function handleLinks(request: Request, env: Env, url: URL): Promise
       return Response.json(rows);
     }
 
-    // GET /links/for-file/:fileId — all links involving a file (for bottom panel)
+    // GET /links/for-file/:fileId - all approved links involving a file.
     if (method === "GET" && linkId === "for-file" && sub) {
       const rows = await db(env).query("links", {
         or: `(file_a_id.eq.${sub},file_b_id.eq.${sub})`,
@@ -179,7 +179,7 @@ async function sendTelegramApproval(env: Env, link: Link): Promise<void> {
   const titleB = rowsB[0]?.path.split("/").pop() ?? link.file_b_id;
   const pct = Math.round(link.confidence * 100);
 
-  const text = `🔗 *New connection proposed* (${pct}% confidence)\n\n📄 *${titleA}*\n📄 *${titleB}*\n\n_${link.reason}_`;
+  const text = `New Architect connection proposed (${pct}% confidence)\n\n${titleA}\n${titleB}\n\n_${link.reason}_`;
 
   await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method: "POST",
@@ -191,8 +191,8 @@ async function sendTelegramApproval(env: Env, link: Link): Promise<void> {
       reply_markup: {
         inline_keyboard: [
           [
-            { text: "✅ Approve", callback_data: `approve:${link.id}` },
-            { text: "❌ Reject", callback_data: `reject:${link.id}` },
+            { text: "Approve", callback_data: `approve:${link.id}` },
+            { text: "Reject", callback_data: `reject:${link.id}` },
           ],
         ],
       },

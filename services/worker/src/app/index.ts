@@ -1,8 +1,9 @@
-import { handleFiles } from "./routes/files";
-import { handleLinks } from "./routes/links";
-import { handleSearch } from "./routes/search";
-import { handleCorrections } from "./routes/corrections";
-import { handleTelegram } from "./telegram/webhook";
+import { handleFiles } from "../routes/files";
+import { handleLinks } from "../routes/links";
+import { handleSearch } from "../routes/search";
+import { handleCorrections } from "../routes/corrections";
+import { handleArchitect } from "../routes/architect";
+import { handleTelegram } from "../telegram/webhook";
 
 export interface Env {
   VAULT_BUCKET: R2Bucket;
@@ -11,6 +12,8 @@ export interface Env {
   TELEGRAM_BOT_TOKEN: string;
   TELEGRAM_CHAT_ID: string;
   OPENBRAIN_AUTH_TOKEN: string;
+  OPENAI_API_KEY?: string;
+  ARCHITECT_MODEL?: string;
 }
 
 const CORS_HEADERS: Record<string, string> = {
@@ -59,6 +62,7 @@ export default {
     else if (path.startsWith("/links")) response = await handleLinks(request, env, url);
     else if (path.startsWith("/search")) response = await handleSearch(request, env, url);
     else if (path.startsWith("/corrections")) response = await handleCorrections(request, env, url);
+    else if (path.startsWith("/architect")) response = await handleArchitect(request, env, url);
     else response = new Response("Not found", { status: 404 });
 
     return withCors(response);

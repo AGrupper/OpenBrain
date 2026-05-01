@@ -1,4 +1,4 @@
-import type { Env } from "../index";
+import type { Env } from "../app";
 import type { VaultFile } from "@openbrain/shared";
 
 interface UploadMetadata {
@@ -23,6 +23,7 @@ export const FILES_SELECT_WHITELIST = new Set([
   "needs_linking",
   "needs_tagging",
   "text_content",
+  "summary",
 ]);
 const FILES_MAX_LIMIT = 500;
 const FILES_BOOL_FILTERS = ["needs_linking", "needs_tagging", "needs_embedding"] as const;
@@ -235,10 +236,17 @@ export async function handleFiles(request: Request, env: Env, url: URL): Promise
         needs_linking: true,
         needs_tagging: true,
       })) as VaultFile[];
+      if (rows[0]?.id) {
+        await db(env).upsert("architect_jobs", {
+          file_id: rows[0].id,
+          status: "pending",
+          updated_at: new Date().toISOString(),
+        });
+      }
       return Response.json(rows[0], { status: 201 });
     }
 
-    // POST /files/:id/embedding — Friday posts the embedding vector
+    // POST /files/:id/embedding - The Architect posts the embedding vector.
     if (method === "POST" && fileId && sub === "embedding") {
       const body = (await request.json()) as { embedding?: unknown; text_preview?: unknown };
       if (!isValidEmbedding(body.embedding)) {
@@ -298,8 +306,7 @@ export async function handleFiles(request: Request, env: Env, url: URL): Promise
       return new Response(null, { status: 204 });
     }
 
-    // DELETE /files?path=<relpath> — remove by path (used by sync engine when a
-    // file is removed locally and we don't have the id handy).
+    // DELETE /files?path=<relpath> - remove by path for legacy clients.
     if (method === "DELETE" && !fileId) {
       const targetPath = url.searchParams.get("path");
       if (!targetPath) return new Response("Missing path query param", { status: 400 });

@@ -1,4 +1,11 @@
-import type { Link, SearchResult, VaultFile } from "../../../../packages/shared/src/types";
+import type {
+  ArchitectChatResponse,
+  ArchitectSuggestion,
+  ArchitectSuggestionStatus,
+  Link,
+  SearchResult,
+  VaultFile,
+} from "../../../../packages/shared/src/types";
 
 const BASE = import.meta.env.VITE_API_URL as string;
 const TOKEN = import.meta.env.VITE_AUTH_TOKEN as string;
@@ -64,5 +71,14 @@ export const api = {
   corrections: {
     post: (fileId: string, field: "folder" | "tags", oldValue: string, newValue: string) =>
       post("/corrections", { file_id: fileId, field, old_value: oldValue, new_value: newValue }),
+  },
+  architect: {
+    suggestions: {
+      pending: () => get<ArchitectSuggestion[]>("/architect/suggestions", { status: "pending" }),
+      update: (id: string, status: ArchitectSuggestionStatus) =>
+        patch<ArchitectSuggestion[]>(`/architect/suggestions/${id}`, { status }),
+    },
+    chat: (message: string, sessionId?: string) =>
+      post<ArchitectChatResponse>("/architect/chat", { message, session_id: sessionId }),
   },
 };

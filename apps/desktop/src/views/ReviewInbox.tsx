@@ -1,12 +1,21 @@
 import { useCallback, useEffect, useState } from "react";
-import type { Link, VaultFile } from "../../../../packages/shared/src/types";
+import type { ArchitectSuggestion, Link, VaultFile } from "../../../../packages/shared/src/types";
 import { api } from "../lib/api";
 
-interface ReviewItem {
+interface LinkReviewItem {
+  kind: "link";
   link: Link;
   fileA: VaultFile | null;
   fileB: VaultFile | null;
 }
+
+interface SuggestionReviewItem {
+  kind: "suggestion";
+  suggestion: ArchitectSuggestion;
+  file: VaultFile | null;
+}
+
+type ReviewItem = LinkReviewItem | SuggestionReviewItem;
 
 interface Props {
   onSelectFile: (file: VaultFile) => void;
@@ -22,17 +31,28 @@ export function ReviewInbox({ onSelectFile }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const pending = await api.links.pending();
+      const [pending, suggestions] = await Promise.all([
+        api.links.pending(),
+        api.architect.suggestions.pending().catch(() => []),
+      ]);
       const hydrated = await Promise.all(
         pending.map(async (link) => {
           const [fileA, fileB] = await Promise.all([
             api.files.get(link.file_a_id).catch(() => null),
             api.files.get(link.file_b_id).catch(() => null),
           ]);
-          return { link, fileA, fileB };
+          return { kind: "link" as const, link, fileA, fileB };
         }),
       );
-      setItems(hydrated);
+      const hydratedSuggestions = await Promise.all(
+        suggestions.map(async (suggestion) => {
+          const file = suggestion.file_id
+            ? await api.files.get(suggestion.file_id).catch(() => null)
+            : null;
+          return { kind: "suggestion" as const, suggestion, file };
+        }),
+      );
+      setItems([...hydrated, ...hydratedSuggestions]);
     } catch (e) {
       setError(String(e));
       setItems([]);
@@ -45,11 +65,25 @@ export function ReviewInbox({ onSelectFile }: Props) {
     void load();
   }, [load]);
 
-  const decide = async (id: string, status: "approved" | "rejected") => {
+  const decideLink = async (id: string, status: "approved" | "rejected") => {
     setBusyId(id);
     try {
       await api.links.update(id, status);
-      setItems((current) => current.filter((item) => item.link.id !== id));
+      setItems((current) => current.filter((item) => item.kind !== "link" || item.link.id !== id));
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const decideSuggestion = async (id: string, status: "approved" | "rejected") => {
+    setBusyId(id);
+    try {
+      await api.architect.suggestions.update(id, status);
+      setItems((current) =>
+        current.filter((item) => item.kind !== "suggestion" || item.suggestion.id !== id),
+      );
     } catch (e) {
       setError(String(e));
     } finally {
@@ -78,47 +112,131 @@ export function ReviewInbox({ onSelectFile }: Props) {
       )}
 
       <div style={styles.list}>
-        {items.map(({ link, fileA, fileB }) => (
-          <div key={link.id} style={styles.card}>
-            <div style={styles.cardTop}>
-              <button
-                style={styles.fileBtn}
-                onClick={() => fileA && onSelectFile(fileA)}
-                disabled={!fileA}
-              >
-                {fileA?.path ?? link.file_a_id}
-              </button>
-              <span style={styles.connector}>linked to</span>
-              <button
-                style={styles.fileBtn}
-                onClick={() => fileB && onSelectFile(fileB)}
-                disabled={!fileB}
-              >
-                {fileB?.path ?? link.file_b_id}
-              </button>
-            </div>
-            <div style={styles.reason}>{link.reason}</div>
-            <div style={styles.footer}>
-              <span style={styles.confidence}>{Math.round(link.confidence * 100)}% confidence</span>
-              <div style={styles.actions}>
-                <button
-                  style={styles.rejectBtn}
-                  onClick={() => decide(link.id, "rejected")}
-                  disabled={busyId === link.id}
-                >
-                  Reject
-                </button>
-                <button
-                  style={styles.approveBtn}
-                  onClick={() => decide(link.id, "approved")}
-                  disabled={busyId === link.id}
-                >
-                  Approve
-                </button>
-              </div>
-            </div>
-          </div>
-        ))}
+        {items.map((item) =>
+          item.kind === "link" ? (
+            <LinkCard
+              key={item.link.id}
+              item={item}
+              busy={busyId === item.link.id}
+              onSelectFile={onSelectFile}
+              onDecide={decideLink}
+            />
+          ) : (
+            <SuggestionCard
+              key={item.suggestion.id}
+              item={item}
+              busy={busyId === item.suggestion.id}
+              onSelectFile={onSelectFile}
+              onDecide={decideSuggestion}
+            />
+          ),
+        )}
+      </div>
+    </div>
+  );
+}
+
+function LinkCard({
+  item,
+  busy,
+  onSelectFile,
+  onDecide,
+}: {
+  item: LinkReviewItem;
+  busy: boolean;
+  onSelectFile: (file: VaultFile) => void;
+  onDecide: (id: string, status: "approved" | "rejected") => void;
+}) {
+  const { link, fileA, fileB } = item;
+  return (
+    <div style={styles.card}>
+      <div style={styles.cardTop}>
+        <button
+          style={styles.fileBtn}
+          onClick={() => fileA && onSelectFile(fileA)}
+          disabled={!fileA}
+        >
+          {fileA?.path ?? link.file_a_id}
+        </button>
+        <span style={styles.connector}>linked to</span>
+        <button
+          style={styles.fileBtn}
+          onClick={() => fileB && onSelectFile(fileB)}
+          disabled={!fileB}
+        >
+          {fileB?.path ?? link.file_b_id}
+        </button>
+      </div>
+      <div style={styles.reason}>{link.reason}</div>
+      <DecisionFooter
+        confidence={link.confidence}
+        busy={busy}
+        onReject={() => onDecide(link.id, "rejected")}
+        onApprove={() => onDecide(link.id, "approved")}
+      />
+    </div>
+  );
+}
+
+function SuggestionCard({
+  item,
+  busy,
+  onSelectFile,
+  onDecide,
+}: {
+  item: SuggestionReviewItem;
+  busy: boolean;
+  onSelectFile: (file: VaultFile) => void;
+  onDecide: (id: string, status: "approved" | "rejected") => void;
+}) {
+  const { suggestion, file } = item;
+  return (
+    <div style={styles.card}>
+      <div style={styles.cardTop}>
+        <span style={styles.typeBadge}>{suggestion.type}</span>
+        {file && (
+          <button style={styles.fileBtn} onClick={() => onSelectFile(file)}>
+            {file.path}
+          </button>
+        )}
+      </div>
+      <div style={styles.suggestionTitle}>{suggestion.title}</div>
+      <div style={styles.reason}>{suggestion.reason}</div>
+      <DecisionFooter
+        confidence={suggestion.confidence ?? undefined}
+        busy={busy}
+        onReject={() => onDecide(suggestion.id, "rejected")}
+        onApprove={() => onDecide(suggestion.id, "approved")}
+      />
+    </div>
+  );
+}
+
+function DecisionFooter({
+  confidence,
+  busy,
+  onReject,
+  onApprove,
+}: {
+  confidence?: number;
+  busy: boolean;
+  onReject: () => void;
+  onApprove: () => void;
+}) {
+  return (
+    <div style={styles.footer}>
+      <span style={styles.confidence}>
+        {typeof confidence === "number"
+          ? `${Math.round(confidence * 100)}% confidence`
+          : "Needs review"}
+      </span>
+      <div style={styles.actions}>
+        <button style={styles.rejectBtn} onClick={onReject} disabled={busy}>
+          Reject
+        </button>
+        <button style={styles.approveBtn} onClick={onApprove} disabled={busy}>
+          Approve
+        </button>
       </div>
     </div>
   );
@@ -163,6 +281,22 @@ const styles: Record<string, React.CSSProperties> = {
   },
   connector: { color: "#777", fontSize: 12 },
   reason: { color: "#ddd", fontSize: 14, lineHeight: 1.5, marginTop: 12 },
+  suggestionTitle: {
+    color: "#f2f2f2",
+    fontSize: 15,
+    fontWeight: 700,
+    marginTop: 12,
+  },
+  typeBadge: {
+    color: "#8ab4ff",
+    border: "1px solid #2f4770",
+    background: "#142033",
+    borderRadius: 6,
+    padding: "4px 8px",
+    fontSize: 12,
+    fontWeight: 700,
+    textTransform: "capitalize",
+  },
   footer: {
     display: "flex",
     justifyContent: "space-between",

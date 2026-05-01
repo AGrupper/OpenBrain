@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi, type Mock } from "vitest";
 import { handleLinks } from "./links";
-import type { Env } from "../index";
+import type { Env } from "../app";
 
 function makeEnv(): Env {
   return {

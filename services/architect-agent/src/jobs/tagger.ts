@@ -1,16 +1,15 @@
 /**
- * Friday's hourly tagger cron.
- * Run: tsx tagger.ts
- * Schedule via Openclaw: every hour alongside linker.ts
+ * The Architect's folder/tag suggestion job.
+ * Run: tsx src/jobs/tagger.ts
  */
 import { fileURLToPath } from "node:url";
-import type { VaultFile } from "../../packages/shared/src/types";
+import type { VaultFile } from "../../../../packages/shared/src/types";
 
 const API = process.env.OPENBRAIN_API_URL!;
 const TOKEN = process.env.OPENBRAIN_AUTH_TOKEN!;
 const MAX_FILES = parseInt(process.env.MAX_FILES_PER_RUN ?? "20");
-const MODEL_PROVIDER = process.env.FRIDAY_MODEL_PROVIDER ?? "anthropic";
-const MODEL = process.env.FRIDAY_MODEL ?? "claude-opus-4-7";
+const MODEL_PROVIDER = process.env.ARCHITECT_MODEL_PROVIDER ?? "openai";
+const MODEL = process.env.ARCHITECT_MODEL ?? "gpt-4.1-mini";
 
 const headers = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
 
@@ -25,7 +24,7 @@ async function apiFetch(path: string, opts: RequestInit = {}) {
 }
 
 export async function getRecentCorrections(): Promise<string> {
-  // Fetch last 20 corrections to give Friday context about your preferences
+  // Fetch last 20 corrections to give The Architect context about your preferences.
   const res = await fetch(`${API}/corrections?limit=20`, { headers });
   if (!res.ok) return "";
   const corrections = (await res.json()) as Array<{
@@ -40,7 +39,7 @@ export async function getRecentCorrections(): Promise<string> {
   return `\nRecent corrections to learn from:\n${lines.join("\n")}\n`;
 }
 
-async function askFridayToOrganize(
+async function askArchitectToOrganize(
   filePath: string,
   existingFolders: string[],
   existingTags: string[],
@@ -50,7 +49,8 @@ async function askFridayToOrganize(
   const folderList = existingFolders.slice(0, 30).join(", ");
   const tagList = existingTags.slice(0, 50).join(", ");
 
-  const prompt = `You are organizing a personal knowledge vault. Suggest a folder and tags for this file.
+  const prompt = `You are The Architect for a personal OpenBrain knowledge vault.
+Suggest a folder and tags for this file. Prefer existing folders and tags unless a new one is clearly justified.
 
 Filename: "${filename}"
 Full path: "${filePath}"
@@ -114,7 +114,7 @@ Respond with JSON only:
     return JSON.parse(data.choices[0].message.content);
   }
 
-  throw new Error(`Unsupported FRIDAY_MODEL_PROVIDER: ${MODEL_PROVIDER}`);
+  throw new Error(`Unsupported ARCHITECT_MODEL_PROVIDER: ${MODEL_PROVIDER}`);
 }
 
 export async function main() {
@@ -136,24 +136,48 @@ export async function main() {
 
   for (const file of files) {
     try {
-      const suggestion = await askFridayToOrganize(
+      const suggestion = await askArchitectToOrganize(
         file.path,
         existingFolders,
         existingTags,
         corrections,
       );
 
-      await apiFetch(`/files/${file.id}`, {
-        method: "PATCH",
+      const title = file.path.split("/").pop() ?? file.path;
+
+      await apiFetch("/architect/suggestions", {
+        method: "POST",
         body: JSON.stringify({
-          folder: suggestion.folder,
-          tags: suggestion.tags,
-          needs_tagging: false,
+          file_id: file.id,
+          type: "folder",
+          title: `Move ${title} to ${suggestion.folder}`,
+          reason:
+            "The Architect found this folder to be the best fit based on the file name, existing vault structure, and recent corrections.",
+          payload: { folder: suggestion.folder },
+          confidence: 0.7,
         }),
       });
 
+      await apiFetch("/architect/suggestions", {
+        method: "POST",
+        body: JSON.stringify({
+          file_id: file.id,
+          type: "tags",
+          title: `Tag ${title}`,
+          reason:
+            "The Architect found these tags relevant and reusable for future search and graph context.",
+          payload: { tags: suggestion.tags },
+          confidence: 0.7,
+        }),
+      });
+
+      await apiFetch(`/files/${file.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ needs_tagging: false }),
+      });
+
       console.log(
-        `[tagger] Tagged "${file.path.split("/").pop()}" → folder: ${suggestion.folder}, tags: ${suggestion.tags.join(", ")}`,
+        `[tagger] Suggested review items for "${title}" -> folder: ${suggestion.folder}, tags: ${suggestion.tags.join(", ")}`,
       );
 
       // Add new folder/tags to our local cache for subsequent files

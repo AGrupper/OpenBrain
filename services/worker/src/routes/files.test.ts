@@ -7,7 +7,7 @@ import {
   EMBEDDING_DIMENSIONS,
   folderFromPath,
 } from "./files";
-import type { Env } from "../index";
+import type { Env } from "../app";
 
 function makeRequest(url: string, init?: RequestInit) {
   return new Request(url, init);

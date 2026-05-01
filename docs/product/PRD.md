@@ -17,17 +17,18 @@ The product center is a knowledge vault, not a generic cloud drive. Users should
 
 ## Core Requirements
 
-- Manual local file import must work without starting folder sync.
+- Manual local file import is the core ingestion path.
 - Folder/List mode must let users browse, read, and inspect connected files.
 - Graph mode must show meaningful approved connections, not noisy speculative links.
 - AI suggestions must go through a review workflow before shaping the vault.
+- The Architect chat must answer only from retrieved vault context and cite sources.
 - Related-file context should be visible while reading.
 - Editing Markdown notes and page comments are future workspace capabilities, not the first priority.
 - Notion, Apple Notes, and other connectors are long-term goals after the vault experience is useful.
 
 ## AI Behavior
 
-- The AI acts as a careful librarian, not an unchecked operator.
+- The AI acts as The Architect of the vault: careful, scoped, and not an unchecked operator.
 - Suggestions should explain why a folder, tag, link, summary, or action is useful.
 - New files should be connected to projects/folders first, then tags/topics, then specific related files.
 - The AI should avoid creating new structure unless there is a clear reason.
@@ -36,7 +37,7 @@ The product center is a knowledge vault, not a generic cloud drive. Users should
 ## Non-Goals
 
 - Do not build a generic Dropbox or Google Drive clone.
-- Do not make sync the only way to add files.
+- Do not include folder sync in v1.
 - Do not silently reorganize the user's vault.
 - Do not prioritize teams, sharing, or collaboration before the personal vault is excellent.
 - Do not deeply support every file type from the start.

@@ -1,0 +1,229 @@
+import { useState } from "react";
+import type { ArchitectChatMessage, VaultFile } from "../../../../packages/shared/src/types";
+import { api } from "../lib/api";
+
+interface Props {
+  onSelectFile: (file: VaultFile) => void;
+}
+
+interface ChatEntry {
+  role: "user" | "architect";
+  text: string;
+  sources?: ArchitectChatMessage["sources"];
+}
+
+export function ArchitectChat({ onSelectFile }: Props) {
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [input, setInput] = useState("");
+  const [entries, setEntries] = useState<ChatEntry[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const ask = async () => {
+    const message = input.trim();
+    if (!message || busy) return;
+
+    setInput("");
+    setError(null);
+    setBusy(true);
+    setEntries((current) => [...current, { role: "user", text: message }]);
+
+    try {
+      const response = await api.architect.chat(message, sessionId ?? undefined);
+      setSessionId(response.session_id);
+      setEntries((current) => [
+        ...current,
+        {
+          role: "architect",
+          text: response.answer,
+          sources: response.sources,
+        },
+      ]);
+    } catch (e) {
+      setError(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div style={styles.container}>
+      <div style={styles.header}>
+        <div>
+          <div style={styles.title}>The Architect</div>
+          <div style={styles.subtitle}>
+            Ask questions that can be answered from your vault. Unsupported answers should be
+            refused.
+          </div>
+        </div>
+      </div>
+
+      <div style={styles.thread}>
+        {entries.length === 0 && (
+          <div style={styles.empty}>
+            Ask about files, projects, notes, or connections in the vault.
+          </div>
+        )}
+        {entries.map((entry, index) => (
+          <div
+            key={`${entry.role}-${index}`}
+            style={{
+              ...styles.message,
+              ...(entry.role === "user" ? styles.userMessage : styles.architectMessage),
+            }}
+          >
+            <div style={styles.messageRole}>{entry.role === "user" ? "You" : "The Architect"}</div>
+            <div style={styles.messageText}>{entry.text}</div>
+            {entry.sources && entry.sources.length > 0 && (
+              <div style={styles.sources}>
+                {entry.sources.map((source) => (
+                  <button
+                    key={`${source.file_id}-${source.path}`}
+                    style={styles.sourceButton}
+                    onClick={() =>
+                      api.files
+                        .get(source.file_id)
+                        .then(onSelectFile)
+                        .catch(() => {})
+                    }
+                    title={source.snippet}
+                  >
+                    {source.path}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {error && <div style={styles.error}>{error}</div>}
+      <form
+        style={styles.composer}
+        onSubmit={(event) => {
+          event.preventDefault();
+          void ask();
+        }}
+      >
+        <input
+          style={styles.input}
+          value={input}
+          onChange={(event) => setInput(event.target.value)}
+          placeholder="Ask The Architect..."
+          disabled={busy}
+        />
+        <button className="btn-primary" type="submit" disabled={busy || !input.trim()}>
+          {busy ? "Asking..." : "Ask"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+const styles: Record<string, React.CSSProperties> = {
+  container: {
+    display: "flex",
+    flexDirection: "column",
+    height: "100%",
+    background: "var(--bg-base)",
+  },
+  header: {
+    padding: "var(--spacing-6) var(--spacing-8) var(--spacing-4)",
+    borderBottom: "1px solid var(--border-color)",
+    background: "var(--bg-surface)",
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: 700,
+    color: "var(--text-primary)",
+  },
+  subtitle: {
+    marginTop: 4,
+    color: "var(--text-muted)",
+    fontSize: 13,
+  },
+  thread: {
+    flex: 1,
+    overflowY: "auto",
+    padding: "var(--spacing-6) var(--spacing-8)",
+    display: "flex",
+    flexDirection: "column",
+    gap: "var(--spacing-3)",
+  },
+  empty: {
+    color: "var(--text-muted)",
+    fontSize: 14,
+    padding: "var(--spacing-8) 0",
+  },
+  message: {
+    maxWidth: 900,
+    borderRadius: "var(--radius-md)",
+    border: "1px solid var(--border-color)",
+    padding: "var(--spacing-4)",
+    boxShadow: "var(--shadow-sm)",
+  },
+  userMessage: {
+    alignSelf: "flex-end",
+    background: "var(--bg-surface-active)",
+  },
+  architectMessage: {
+    alignSelf: "flex-start",
+    background: "var(--bg-surface)",
+  },
+  messageRole: {
+    color: "var(--text-muted)",
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: "uppercase",
+    marginBottom: "var(--spacing-2)",
+  },
+  messageText: {
+    color: "var(--text-primary)",
+    fontSize: 14,
+    whiteSpace: "pre-wrap",
+    lineHeight: 1.6,
+  },
+  sources: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "var(--spacing-2)",
+    marginTop: "var(--spacing-3)",
+  },
+  sourceButton: {
+    border: "1px solid var(--border-highlight)",
+    background: "var(--bg-base)",
+    color: "var(--accent-primary)",
+    borderRadius: "var(--radius-sm)",
+    padding: "4px 8px",
+    cursor: "pointer",
+    fontSize: 12,
+    maxWidth: 320,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  composer: {
+    display: "flex",
+    gap: "var(--spacing-3)",
+    padding: "var(--spacing-4) var(--spacing-8)",
+    borderTop: "1px solid var(--border-color)",
+    background: "var(--bg-surface)",
+  },
+  input: {
+    flex: 1,
+    border: "1px solid var(--border-highlight)",
+    background: "var(--bg-base)",
+    color: "var(--text-primary)",
+    borderRadius: "var(--radius-sm)",
+    padding: "9px 12px",
+    fontSize: 14,
+    outline: "none",
+  },
+  error: {
+    color: "var(--accent-danger)",
+    background: "rgba(239, 68, 68, 0.08)",
+    borderTop: "1px solid rgba(239, 68, 68, 0.2)",
+    padding: "var(--spacing-3) var(--spacing-8)",
+    fontSize: 13,
+  },
+};

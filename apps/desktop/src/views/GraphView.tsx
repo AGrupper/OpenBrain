@@ -135,7 +135,7 @@ export function GraphView({ files, onSelect }: Props) {
           No connections yet.
           <br />
           <span style={{ fontSize: 12 }}>
-            Friday will propose links as she processes your files.
+            The Architect will propose links as it processes your files.
           </span>
         </div>
       )}

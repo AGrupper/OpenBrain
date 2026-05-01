@@ -7,5 +7,5 @@
     "skipLibCheck": true,
     "esModuleInterop": true
   },
-  "include": ["*.ts", "../../packages/shared/src"]
+  "include": ["src/**/*.ts", "tests/**/*.ts", "../../packages/shared/src"]
 }

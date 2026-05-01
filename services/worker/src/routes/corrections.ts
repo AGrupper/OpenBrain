@@ -1,4 +1,4 @@
-import type { Env } from "../index";
+import type { Env } from "../app";
 import type { Correction } from "@openbrain/shared";
 
 function db(env: Env) {

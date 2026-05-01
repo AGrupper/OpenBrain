@@ -71,7 +71,7 @@ create index if not exists links_status on links (status);
 create index if not exists links_file_a on links (file_a_id);
 create index if not exists links_file_b on links (file_b_id);
 
--- Corrections table: logs manual overrides for Friday's in-context learning
+-- Corrections table: logs manual overrides for The Architect's in-context learning
 create table if not exists corrections (
   id          uuid primary key default gen_random_uuid(),
   file_id     uuid not null references files(id) on delete cascade,

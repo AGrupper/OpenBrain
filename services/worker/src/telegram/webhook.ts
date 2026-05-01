@@ -1,4 +1,4 @@
-import type { Env } from "../index";
+import type { Env } from "../app";
 
 interface TelegramUpdate {
   update_id: number;

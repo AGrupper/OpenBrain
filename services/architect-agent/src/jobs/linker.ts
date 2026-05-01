@@ -1,10 +1,9 @@
 /**
- * Friday's hourly linker cron.
- * Run: tsx linker.ts
- * Schedule via Openclaw: every hour (or however Friday's cron is configured)
+ * The Architect's linker job.
+ * Run: tsx src/jobs/linker.ts
  */
 import { fileURLToPath } from "node:url";
-import type { VaultFile } from "../../packages/shared/src/types";
+import type { VaultFile } from "../../../../packages/shared/src/types";
 
 const API = process.env.OPENBRAIN_API_URL!;
 const TOKEN = process.env.OPENBRAIN_AUTH_TOKEN!;
@@ -106,16 +105,16 @@ async function embedText(text: string): Promise<number[]> {
 
 // ── Reasoning ────────────────────────────────────────────────────────────────
 
-async function askFridayIfRelated(
+async function askArchitectIfRelated(
   titleA: string,
   titleB: string,
   previewA: string,
   previewB: string,
 ): Promise<{ related: boolean; reason: string; confidence: number }> {
-  const provider = process.env.FRIDAY_MODEL_PROVIDER ?? "anthropic";
-  const model = process.env.FRIDAY_MODEL ?? "claude-opus-4-7";
+  const provider = process.env.ARCHITECT_MODEL_PROVIDER ?? "openai";
+  const model = process.env.ARCHITECT_MODEL ?? "gpt-4.1-mini";
 
-  const prompt = `You are an AI knowledge assistant. Determine if these two notes are meaningfully related.
+  const prompt = `You are The Architect for a personal OpenBrain knowledge vault. Determine if these two files are meaningfully related.
 
 Note A: "${titleA}"
 Preview: ${previewA.slice(0, 300)}
@@ -176,7 +175,7 @@ Respond with JSON only:
     return JSON.parse(data.choices[0].message.content);
   }
 
-  throw new Error(`Unsupported FRIDAY_MODEL_PROVIDER: ${provider}`);
+  throw new Error(`Unsupported ARCHITECT_MODEL_PROVIDER: ${provider}`);
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
@@ -221,7 +220,7 @@ async function main() {
 
       let result: { related: boolean; reason: string; confidence: number };
       try {
-        result = await askFridayIfRelated(title, neighborTitle, title, neighborTitle);
+        result = await askArchitectIfRelated(title, neighborTitle, title, neighborTitle);
       } catch (e) {
         console.warn(`[linker] Reasoning failed for pair (${title}, ${neighborTitle}):`, e);
         continue;

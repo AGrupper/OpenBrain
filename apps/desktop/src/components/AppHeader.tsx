@@ -1,4 +1,4 @@
-export type ViewMode = "list" | "graph" | "review";
+export type ViewMode = "list" | "graph" | "review" | "chat";
 
 interface Props {
   view: ViewMode;
@@ -29,6 +29,12 @@ export function AppHeader({ view, onViewChange, onOpenSettings }: Props) {
             onClick={() => onViewChange("review")}
           >
             Review
+          </button>
+          <button
+            className={`toggle-btn ${view === "chat" ? "active" : ""}`}
+            onClick={() => onViewChange("chat")}
+          >
+            Architect
           </button>
         </div>
         <button className="btn-icon" onClick={onOpenSettings} title="Settings">

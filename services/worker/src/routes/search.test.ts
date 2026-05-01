@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { handleSearch } from "./search";
-import type { Env } from "../index";
+import type { Env } from "../app";
 
 function makeEnv(): Env {
   return {
