@@ -6,13 +6,13 @@ OpenBrain is a cloud-backed personal knowledge vault with a dedicated AI agent c
 Architect**. The Architect is owned by OpenBrain, not OpenClaw, and its job is to organize, connect,
 explain, and retrieve knowledge from the vault.
 
-Manual file import is the v1 ingestion path. Folder sync and local folder mirroring are not part of
-v1.
+Manual file import and in-app note creation are the v1 ingestion paths. Folder sync and local folder
+mirroring are not part of v1.
 
 ## Architecture
 
-- **Desktop app:** Tauri 2, React, Vite, and TypeScript. Handles manual import, folder/list view,
-  graph view, Review Inbox, search, settings, and Architect chat.
+- **Desktop app:** Tauri 2, React, Vite, and TypeScript. Handles manual import, persistent folder
+  explorer, file reader, graph view, Review Inbox, search, settings, and Architect chat.
 - **Native desktop layer:** Rust Tauri commands for local file selection/import. It uploads selected
   files to the Worker and does not run a folder watcher.
 - **Cloud API:** Cloudflare Worker routes for files, links, search, corrections, Architect jobs,
@@ -35,6 +35,10 @@ v1.
 7. The user approves or rejects each suggestion.
 8. Approved links appear in the reader and graph.
 
+The List view is a cloud vault explorer. Folders are persistent Supabase records, while files remain
+cloud objects in R2 plus metadata rows in Supabase. Creating a blank Markdown note writes the R2
+object and matching `files` row directly through the Worker.
+
 ## Architect Chat
 
 Architect chat is retrieval-augmented over vault data.
@@ -52,6 +56,7 @@ from provided vault context, cite sources, and refuse unsupported claims.
 
 ## Data Model
 
+- `folders`: persistent empty or populated cloud vault folders.
 - `files`: original vault file metadata, extracted text, tags, folder, and summary.
 - `embeddings`: one vector row per file.
 - `links`: approved, rejected, pending, or auto-approved file relationships.
@@ -63,7 +68,9 @@ from provided vault context, cite sources, and refuse unsupported claims.
 
 ## API Surface
 
-- `/files`: upload, list, fetch metadata, download, update, delete, embedding, neighbors.
+- `/folders`: list, create, and delete empty persistent folders.
+- `/files`: upload, create text Markdown notes, list, fetch metadata, download, update, delete,
+  embedding, neighbors.
 - `/links`: proposed and approved file connections.
 - `/search`: keyword search, with semantic retrieval layered in over time.
 - `/corrections`: user correction history for future Architect behavior.
@@ -78,4 +85,6 @@ from provided vault context, cite sources, and refuse unsupported claims.
 - The Architect must not silently move, delete, rename, tag, summarize, or link files.
 - The Architect should prefer existing folders and tags before creating new structure.
 - Folder sync is out of v1 unless explicitly reintroduced later.
+- Folder rename and move are deferred until recursive R2 object moves and database path updates are
+  designed deliberately.
 - OpenClaw is not part of OpenBrain vault processing.

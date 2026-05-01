@@ -16,11 +16,12 @@ import {
   persistTheme,
   type Theme,
 } from "../views/SettingsModal";
-import type { VaultFile } from "../../../../packages/shared/src/types";
+import type { VaultFile, VaultFolder } from "../../../../packages/shared/src/types";
 
 export default function App() {
   const [view, setView] = useState<ViewMode>("list");
   const [files, setFiles] = useState<VaultFile[]>([]);
+  const [folders, setFolders] = useState<VaultFolder[]>([]);
   const [selectedFile, setSelectedFile] = useState<VaultFile | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,10 +32,10 @@ export default function App() {
 
   const loadFiles = useCallback(() => {
     setLoading(true);
-    api.files
-      .list()
-      .then((nextFiles) => {
+    Promise.all([api.files.list(), api.folders.list()])
+      .then(([nextFiles, nextFolders]) => {
         setFiles(nextFiles);
+        setFolders(nextFolders);
         setSelectedFile((current) =>
           current ? (nextFiles.find((file) => file.id === current.id) ?? null) : null,
         );
@@ -49,7 +50,7 @@ export default function App() {
 
   useEffect(() => loadFiles(), [loadFiles]);
 
-  const handleAddFiles = async () => {
+  const handleAddFiles = async (targetFolder?: string | null) => {
     const selected = await openDialog({
       directory: false,
       multiple: true,
@@ -65,6 +66,7 @@ export default function App() {
         filePaths,
         apiUrl: import.meta.env.VITE_API_URL ?? "",
         authToken: import.meta.env.VITE_AUTH_TOKEN ?? "",
+        remoteFolder: targetFolder === undefined ? "Inbox" : (targetFolder ?? ""),
       });
       setImportStatus(formatImportSummary(summary));
       loadFiles();
@@ -95,9 +97,11 @@ export default function App() {
         {!loading && !error && view === "list" && (
           <ListView
             files={files}
+            folders={folders}
             selectedFile={selectedFile}
             onSelect={setSelectedFile}
             onChange={loadFiles}
+            onImportFiles={handleAddFiles}
           />
         )}
         {!loading && !error && view === "graph" && (
@@ -120,7 +124,7 @@ export default function App() {
 
 function formatImportSummary(summary: { imported: number; failed: number }) {
   if (summary.failed) return `Imported ${summary.imported}; ${summary.failed} failed`;
-  return `Imported ${summary.imported} file${summary.imported === 1 ? "" : "s"} into Inbox`;
+  return `Imported ${summary.imported} file${summary.imported === 1 ? "" : "s"}`;
 }
 
 const styles: Record<string, React.CSSProperties> = {

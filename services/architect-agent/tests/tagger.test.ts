@@ -9,7 +9,7 @@ vi.hoisted(() => {
 });
 
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { main, getRecentCorrections } from "../src/jobs/tagger";
+import { askArchitectToOrganize, main, getRecentCorrections } from "../src/jobs/tagger";
 import type { VaultFile } from "../../../packages/shared/src/types";
 
 afterEach(() => {
@@ -74,6 +74,35 @@ describe("getRecentCorrections", () => {
     const result = await getRecentCorrections();
     expect(result).toContain("work");
     expect(result).toContain("finance");
+  });
+});
+
+describe("deterministic smoke mode", () => {
+  it("creates predictable folder and tag suggestions without calling a provider API", async () => {
+    process.env.ARCHITECT_MODEL_PROVIDER = "deterministic";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("deterministic organization should not call fetch");
+      }),
+    );
+
+    try {
+      await expect(
+        askArchitectToOrganize("openbrain-smoke-related-a.md", [], [], ""),
+      ).resolves.toEqual({
+        folder: "smoke/related",
+        tags: ["architect-smoke", "related"],
+      });
+      await expect(
+        askArchitectToOrganize("openbrain-smoke-unrelated.md", [], [], ""),
+      ).resolves.toEqual({
+        folder: "smoke/unrelated",
+        tags: ["architect-smoke", "unrelated"],
+      });
+    } finally {
+      process.env.ARCHITECT_MODEL_PROVIDER = "anthropic";
+    }
   });
 });
 

@@ -39,13 +39,44 @@ fn sanitize_file_name(name: &str) -> String {
     }
 }
 
-fn unique_inbox_path(path: &Path, used: &mut HashSet<String>) -> Result<String, String> {
+fn sanitize_folder_path(path: Option<&str>) -> String {
+    let Some(path) = path else {
+        return "Inbox".to_string();
+    };
+    let cleaned = path
+        .replace('\\', "/")
+        .split('/')
+        .map(sanitize_file_name)
+        .filter(|segment| !segment.is_empty() && segment != "untitled")
+        .collect::<Vec<_>>()
+        .join("/");
+
+    if cleaned.is_empty() && !path.trim().is_empty() {
+        "Inbox".to_string()
+    } else {
+        cleaned
+    }
+}
+
+fn join_remote_path(remote_folder: &str, file_name: &str) -> String {
+    if remote_folder.is_empty() {
+        file_name.to_string()
+    } else {
+        format!("{remote_folder}/{file_name}")
+    }
+}
+
+fn unique_remote_path(
+    path: &Path,
+    remote_folder: &str,
+    used: &mut HashSet<String>,
+) -> Result<String, String> {
     let file_name = path
         .file_name()
         .and_then(|n| n.to_str())
         .ok_or_else(|| "File path has no valid filename".to_string())?;
     let clean = sanitize_file_name(file_name);
-    let candidate = format!("Inbox/{clean}");
+    let candidate = join_remote_path(remote_folder, &clean);
 
     if used.insert(candidate.clone()) {
         return Ok(candidate);
@@ -64,8 +95,8 @@ fn unique_inbox_path(path: &Path, used: &mut HashSet<String>) -> Result<String, 
 
     for n in 2.. {
         let candidate = match &ext {
-            Some(ext) => format!("Inbox/{stem} ({n}).{ext}"),
-            None => format!("Inbox/{stem} ({n})"),
+            Some(ext) => join_remote_path(remote_folder, &format!("{stem} ({n}).{ext}")),
+            None => join_remote_path(remote_folder, &format!("{stem} ({n})")),
         };
         if used.insert(candidate.clone()) {
             return Ok(candidate);
@@ -80,6 +111,7 @@ async fn import_files(
     file_paths: Vec<String>,
     api_url: String,
     auth_token: String,
+    remote_folder: Option<String>,
 ) -> Result<ImportSummary, String> {
     let cfg = ImportConfig {
         api_url,
@@ -93,6 +125,7 @@ async fn import_files(
     let mut used = HashSet::new();
     let mut failures = Vec::new();
     let mut imported = 0usize;
+    let remote_folder = sanitize_folder_path(remote_folder.as_deref());
 
     for raw_path in file_paths {
         let path = PathBuf::from(&raw_path);
@@ -104,7 +137,7 @@ async fn import_files(
             continue;
         }
 
-        let remote_path = match unique_inbox_path(&path, &mut used) {
+        let remote_path = match unique_remote_path(&path, &remote_folder, &mut used) {
             Ok(path) => path,
             Err(error) => {
                 failures.push(ImportFailure {
@@ -157,16 +190,23 @@ mod tests {
         let mut used = HashSet::new();
 
         assert_eq!(
-            unique_inbox_path(Path::new("C:/notes/report.md"), &mut used).unwrap(),
+            unique_remote_path(Path::new("C:/notes/report.md"), "Inbox", &mut used).unwrap(),
             "Inbox/report.md"
         );
         assert_eq!(
-            unique_inbox_path(Path::new("C:/other/report.md"), &mut used).unwrap(),
+            unique_remote_path(Path::new("C:/other/report.md"), "Inbox", &mut used).unwrap(),
             "Inbox/report (2).md"
         );
         assert_eq!(
-            unique_inbox_path(Path::new("C:/other/report"), &mut used).unwrap(),
+            unique_remote_path(Path::new("C:/other/report"), "Inbox", &mut used).unwrap(),
             "Inbox/report"
         );
+    }
+
+    #[test]
+    fn sanitize_folder_path_keeps_valid_segments() {
+        assert_eq!(sanitize_folder_path(Some("Projects/OpenBrain")), "Projects/OpenBrain");
+        assert_eq!(sanitize_folder_path(Some(" /bad:name//notes ")), "bad-name/notes");
+        assert_eq!(sanitize_folder_path(None), "Inbox");
     }
 }

@@ -1,5 +1,6 @@
 import type { Env } from "../app";
 import type { VaultFile } from "@openbrain/shared";
+import { ensureFolderRows } from "./folders";
 
 interface UploadMetadata {
   path: string;
@@ -85,6 +86,23 @@ export function folderFromPath(path: string): string | null {
   const idx = normalized.lastIndexOf("/");
   if (idx <= 0) return null;
   return normalized.slice(0, idx);
+}
+
+function normalizeFilePath(input: string): string | null {
+  const normalized = input
+    .replaceAll("\\", "/")
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join("/");
+  if (!normalized) return null;
+  if (normalized.split("/").some((part) => part === "." || part === "..")) return null;
+  return normalized;
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 function shouldStoreTextContent(mime: string, path: string): boolean {
@@ -203,6 +221,53 @@ export async function handleFiles(request: Request, env: Env, url: URL): Promise
       return Response.json(rows);
     }
 
+    // POST /files/text — create a blank or text Markdown file directly in the cloud vault.
+    if (method === "POST" && fileId === "text" && !sub) {
+      const body = (await request.json()) as { path?: string; content?: string };
+      const path = body.path ? normalizeFilePath(body.path) : null;
+      if (!path) return new Response("path is required", { status: 400 });
+      if (!path.toLowerCase().endsWith(".md") && !path.toLowerCase().endsWith(".markdown")) {
+        return new Response("path must end with .md or .markdown", { status: 400 });
+      }
+
+      const existing = (await db(env).query("files", {
+        path: `eq.${path}`,
+        select: "id",
+        limit: "1",
+      })) as Pick<VaultFile, "id">[];
+      if (existing.length) return new Response("File already exists", { status: 409 });
+
+      const content = body.content ?? "";
+      const bytes = new TextEncoder().encode(content);
+      const sha256 = await sha256Hex(bytes);
+      const folder = folderFromPath(path);
+      await ensureFolderRows(env, folder);
+      await env.VAULT_BUCKET.put(path, bytes, {
+        httpMetadata: { contentType: "text/markdown" },
+        sha256,
+      });
+      const rows = (await db(env).upsert("files", {
+        path,
+        size: bytes.byteLength,
+        sha256,
+        mime: "text/markdown",
+        folder,
+        text_content: content,
+        updated_at: new Date().toISOString(),
+        needs_embedding: true,
+        needs_linking: true,
+        needs_tagging: true,
+      })) as VaultFile[];
+      if (rows[0]?.id) {
+        await db(env).upsert("architect_jobs", {
+          file_id: rows[0].id,
+          status: "pending",
+          updated_at: new Date().toISOString(),
+        });
+      }
+      return Response.json(rows[0], { status: 201 });
+    }
+
     // PUT /files/upload — receive file blob with metadata in headers, store in R2, upsert row.
     // Headers: X-File-Path, X-File-Sha256, X-File-Size; Content-Type carries MIME.
     if (method === "PUT" && fileId === "upload" && !sub) {
@@ -217,6 +282,8 @@ export async function handleFiles(request: Request, env: Env, url: URL): Promise
         );
       }
 
+      const folder = folderFromPath(meta.path);
+      await ensureFolderRows(env, folder);
       await env.VAULT_BUCKET.put(meta.path, blob, {
         httpMetadata: { contentType: meta.mime },
         sha256: meta.sha256,
@@ -229,7 +296,7 @@ export async function handleFiles(request: Request, env: Env, url: URL): Promise
         size: meta.size,
         sha256: meta.sha256,
         mime: meta.mime,
-        folder: folderFromPath(meta.path),
+        folder,
         text_content: textContent,
         updated_at: new Date().toISOString(),
         needs_embedding: true,
@@ -280,6 +347,7 @@ export async function handleFiles(request: Request, env: Env, url: URL): Promise
         const oldPath = current[0].path;
         const newPath = body.path;
         if (oldPath !== newPath) {
+          await ensureFolderRows(env, folderFromPath(newPath));
           const obj = await env.VAULT_BUCKET.get(oldPath);
           if (obj) {
             await env.VAULT_BUCKET.put(newPath, obj.body, {
@@ -288,6 +356,7 @@ export async function handleFiles(request: Request, env: Env, url: URL): Promise
             await env.VAULT_BUCKET.delete(oldPath);
           }
         }
+        (body as Record<string, unknown>).folder = folderFromPath(newPath);
       }
       const rows = await db(env).patch("files", fileId, {
         ...body,

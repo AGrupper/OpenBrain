@@ -15,6 +15,14 @@ export interface VaultFile {
   folder?: string;
 }
 
+export interface VaultFolder {
+  path: string;
+  name: string;
+  parent_path?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface FileEmbedding {
   file_id: string;
   embedding: number[];

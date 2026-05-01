@@ -4,6 +4,11 @@
  */
 import { fileURLToPath } from "node:url";
 import type { VaultFile } from "../../../../packages/shared/src/types";
+import {
+  deterministicEmbedding,
+  deterministicRelatedness,
+  isDeterministicProvider,
+} from "./deterministic";
 
 const API = process.env.OPENBRAIN_API_URL!;
 const TOKEN = process.env.OPENBRAIN_AUTH_TOKEN!;
@@ -11,6 +16,23 @@ const MAX_FILES = parseInt(process.env.MAX_FILES_PER_RUN ?? "20");
 export const EMBEDDING_DIMENSIONS = 1024;
 
 const headers = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
+
+export function sanitizeApiErrorBody(body: string): string {
+  const redacted = body
+    .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/g, "Bearer [REDACTED]")
+    .replace(/(AUTHORIZATION<\/td>\s*<td>\s*)[^<]+/gi, "$1[REDACTED]");
+
+  const pgrstMessage = redacted.match(/&quot;message&quot;:&quot;([\s\S]*?)&quot;}/);
+  if (pgrstMessage) {
+    return `Supabase error: ${pgrstMessage[1]
+      .replace(/&#39;/g, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, "&")}`;
+  }
+
+  const compact = redacted.replace(/\s+/g, " ").trim();
+  return compact.length > 1200 ? `${compact.slice(0, 1200)}... [truncated]` : compact;
+}
 
 export class ApiError extends Error {
   constructor(
@@ -28,7 +50,8 @@ async function apiFetch(path: string, opts: RequestInit = {}) {
     ...opts,
     headers: { ...headers, ...((opts.headers as Record<string, string>) ?? {}) },
   });
-  if (!res.ok) throw new ApiError(path, res.status, await res.text());
+  if (!res.ok) throw new ApiError(path, res.status, sanitizeApiErrorBody(await res.text()));
+  if (res.status === 204) return null;
   return res.json();
 }
 
@@ -42,8 +65,12 @@ export function isDuplicateLinkError(e: unknown): boolean {
 
 // ── Embedding ────────────────────────────────────────────────────────────────
 
-async function embedText(text: string): Promise<number[]> {
+export async function embedText(text: string): Promise<number[]> {
   const provider = process.env.EMBEDDING_PROVIDER ?? "voyage";
+
+  if (isDeterministicProvider(provider)) {
+    return deterministicEmbedding(text, EMBEDDING_DIMENSIONS);
+  }
 
   if (provider === "voyage") {
     const res = await fetch("https://api.voyageai.com/v1/embeddings", {
@@ -105,7 +132,7 @@ async function embedText(text: string): Promise<number[]> {
 
 // ── Reasoning ────────────────────────────────────────────────────────────────
 
-async function askArchitectIfRelated(
+export async function askArchitectIfRelated(
   titleA: string,
   titleB: string,
   previewA: string,
@@ -113,6 +140,10 @@ async function askArchitectIfRelated(
 ): Promise<{ related: boolean; reason: string; confidence: number }> {
   const provider = process.env.ARCHITECT_MODEL_PROVIDER ?? "openai";
   const model = process.env.ARCHITECT_MODEL ?? "gpt-4.1-mini";
+
+  if (isDeterministicProvider(provider)) {
+    return deterministicRelatedness(titleA, titleB);
+  }
 
   const prompt = `You are The Architect for a personal OpenBrain knowledge vault. Determine if these two files are meaningfully related.
 
@@ -180,7 +211,7 @@ Respond with JSON only:
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 
-async function main() {
+export async function main() {
   console.log(`[linker] Starting run at ${new Date().toISOString()}`);
 
   // 1. Fetch files that need linking

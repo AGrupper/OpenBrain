@@ -1,24 +1,50 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import type { Link, VaultFile } from "../../../../packages/shared/src/types";
+import type { Link, VaultFile, VaultFolder } from "../../../../packages/shared/src/types";
 import { api } from "../lib/api";
 
 interface Props {
   files: VaultFile[];
+  folders: VaultFolder[];
   selectedFile: VaultFile | null;
   onSelect: (f: VaultFile) => void;
   onChange: () => void;
+  onImportFiles: (targetFolder?: string | null) => Promise<void>;
 }
 
-export function ListView({ files, selectedFile, onSelect, onChange }: Props) {
-  const [currentFolder, setCurrentFolder] = useState<string | null>(null);
+interface FolderNode {
+  path: string | null;
+  name: string;
+  folders: FolderNode[];
+  files: VaultFile[];
+}
+
+export function ListView({
+  files,
+  folders,
+  selectedFile,
+  onSelect,
+  onChange,
+  onImportFiles,
+}: Props) {
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(["Inbox"]));
   const [links, setLinks] = useState<Link[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
+  const tree = useMemo(() => buildExplorerTree(files, folders), [files, folders]);
 
-  const folders = [...new Set(files.map(effectiveFolder).filter(Boolean) as string[])].sort();
-  const folderFiles = currentFolder
-    ? files.filter((f) => effectiveFolder(f) === currentFolder)
-    : files;
+  useEffect(() => {
+    if (!selectedFile) return;
+    const folder = effectiveFolder(selectedFile);
+    setSelectedFolder(folder);
+    if (folder) {
+      setExpanded((current) => {
+        const next = new Set(current);
+        for (const ancestor of folderAncestors(folder)) next.add(ancestor);
+        return next;
+      });
+    }
+  }, [selectedFile]);
 
   useEffect(() => {
     if (!selectedFile) {
@@ -46,39 +72,127 @@ export function ListView({ files, selectedFile, onSelect, onChange }: Props) {
     }
   }, [selectedFile]);
 
+  const createFolder = async () => {
+    const name = window.prompt("Folder name");
+    if (!name) return;
+    const cleanName = sanitizeChildName(name);
+    if (!cleanName) {
+      window.alert("Folder name cannot be empty or contain slashes.");
+      return;
+    }
+    const path = joinPath(selectedFolder, cleanName);
+    if (folders.some((folder) => folder.path === path) || treeHasFolder(tree, path)) {
+      window.alert(`Folder already exists: ${path}`);
+      return;
+    }
+
+    try {
+      await api.folders.create(path);
+      setSelectedFolder(path);
+      setExpanded((current) => new Set([...current, ...folderAncestors(path)]));
+      onChange();
+    } catch (e) {
+      window.alert(`Create folder failed: ${String(e)}`);
+    }
+  };
+
+  const createNote = async () => {
+    const name = window.prompt("New note name", "Untitled.md");
+    if (!name) return;
+    const cleanName = ensureMarkdownName(sanitizeChildName(name));
+    if (!cleanName) {
+      window.alert("Note name cannot be empty or contain slashes.");
+      return;
+    }
+    const path = joinPath(selectedFolder, cleanName);
+    if (files.some((file) => file.path === path)) {
+      window.alert(`File already exists: ${path}`);
+      return;
+    }
+
+    try {
+      const file = await api.files.createText(path, "");
+      setExpanded((current) =>
+        selectedFolder ? new Set([...current, ...folderAncestors(selectedFolder)]) : current,
+      );
+      onSelect(file);
+      onChange();
+    } catch (e) {
+      window.alert(`Create note failed: ${String(e)}`);
+    }
+  };
+
+  const deleteFolder = async () => {
+    if (!selectedFolder) return;
+    if (!window.confirm(`Delete empty folder "${selectedFolder}"?`)) return;
+
+    try {
+      await api.folders.delete(selectedFolder);
+      setSelectedFolder(parentFolder(selectedFolder));
+      onChange();
+    } catch (e) {
+      window.alert(`Delete folder failed: ${String(e)}`);
+    }
+  };
+
   return (
     <div style={styles.container}>
       <div style={styles.sidebar}>
+        <div style={styles.toolbar}>
+          <button className="btn-action" onClick={createFolder}>
+            New folder
+          </button>
+          <button className="btn-action" onClick={createNote}>
+            New note
+          </button>
+          <button className="btn-action" onClick={() => onImportFiles(selectedFolder)}>
+            Add files
+          </button>
+          {selectedFolder && (
+            <button className="btn-action btn-action-danger" onClick={deleteFolder}>
+              Delete folder
+            </button>
+          )}
+        </div>
         <div
           className="hover-bg"
-          style={{ ...styles.folderItem, ...(currentFolder === null ? styles.folderActive : {}) }}
-          onClick={() => setCurrentFolder(null)}
+          style={{ ...styles.folderRow, ...(selectedFolder === null ? styles.folderActive : {}) }}
+          onClick={() => setSelectedFolder(null)}
         >
-          All files
+          <span style={styles.rootIcon}>ROOT</span>
+          <span style={styles.folderName}>All files</span>
         </div>
-        {folders.map((folder) => (
-          <div
-            key={folder}
-            className="hover-bg"
-            style={{
-              ...styles.folderItem,
-              ...(currentFolder === folder ? styles.folderActive : {}),
-            }}
-            onClick={() => setCurrentFolder(folder)}
-          >
-            {folder}
-          </div>
-        ))}
-        <div style={styles.fileList}>
-          {folderFiles.map((file) => (
+        <div style={styles.tree}>
+          {tree.folders.map((folder) => (
+            <FolderTreeRow
+              key={folder.path}
+              folder={folder}
+              depth={0}
+              selectedFolder={selectedFolder}
+              selectedFile={selectedFile}
+              expanded={expanded}
+              onToggle={(path) =>
+                setExpanded((current) => {
+                  const next = new Set(current);
+                  if (next.has(path)) next.delete(path);
+                  else next.add(path);
+                  return next;
+                })
+              }
+              onSelectFolder={setSelectedFolder}
+              onSelectFile={onSelect}
+            />
+          ))}
+          {tree.files.map((file) => (
             <FileRow
               key={file.id}
               file={file}
+              depth={0}
               selected={selectedFile?.id === file.id}
               onSelect={onSelect}
             />
           ))}
-          {folderFiles.length === 0 && <div style={styles.empty}>No files</div>}
+          {!tree.folders.length && !tree.files.length && <div style={styles.empty}>No files</div>}
         </div>
       </div>
 
@@ -99,12 +213,7 @@ export function ListView({ files, selectedFile, onSelect, onChange }: Props) {
                 ))}
               </div>
             )}
-            <FileActions
-              file={selectedFile}
-              files={files}
-              onChange={onChange}
-              onSelect={onSelect}
-            />
+            <FileActions file={selectedFile} files={files} onChange={onChange} onSelect={onSelect} />
             {preview && (
               <div className="markdown-body" style={styles.markdown}>
                 <ReactMarkdown>{preview}</ReactMarkdown>
@@ -131,10 +240,88 @@ export function ListView({ files, selectedFile, onSelect, onChange }: Props) {
             )}
           </>
         ) : (
-          <div style={styles.placeholder}>Select a file to preview</div>
+          <div style={styles.placeholder}>
+            {selectedFolder ? `Selected folder: ${selectedFolder}` : "Select a file to preview"}
+          </div>
         )}
       </div>
     </div>
+  );
+}
+
+function FolderTreeRow({
+  folder,
+  depth,
+  selectedFolder,
+  selectedFile,
+  expanded,
+  onToggle,
+  onSelectFolder,
+  onSelectFile,
+}: {
+  folder: FolderNode;
+  depth: number;
+  selectedFolder: string | null;
+  selectedFile: VaultFile | null;
+  expanded: Set<string>;
+  onToggle: (path: string) => void;
+  onSelectFolder: (path: string) => void;
+  onSelectFile: (file: VaultFile) => void;
+}) {
+  const path = folder.path ?? "";
+  const isExpanded = expanded.has(path);
+  const hasChildren = folder.folders.length > 0 || folder.files.length > 0;
+
+  return (
+    <>
+      <div
+        className="hover-bg"
+        style={{
+          ...styles.folderRow,
+          ...(selectedFolder === folder.path ? styles.folderActive : {}),
+          paddingLeft: 12 + depth * 16,
+        }}
+        onClick={() => folder.path && onSelectFolder(folder.path)}
+      >
+        <button
+          style={styles.disclosure}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (folder.path) onToggle(folder.path);
+          }}
+          disabled={!hasChildren}
+          aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
+        >
+          {hasChildren ? (isExpanded ? "v" : ">") : ""}
+        </button>
+        <span style={styles.folderIcon}>DIR</span>
+        <span style={styles.folderName}>{folder.name}</span>
+      </div>
+      {isExpanded &&
+        folder.folders.map((child) => (
+          <FolderTreeRow
+            key={child.path}
+            folder={child}
+            depth={depth + 1}
+            selectedFolder={selectedFolder}
+            selectedFile={selectedFile}
+            expanded={expanded}
+            onToggle={onToggle}
+            onSelectFolder={onSelectFolder}
+            onSelectFile={onSelectFile}
+          />
+        ))}
+      {isExpanded &&
+        folder.files.map((file) => (
+          <FileRow
+            key={file.id}
+            file={file}
+            depth={depth + 1}
+            selected={selectedFile?.id === file.id}
+            onSelect={onSelectFile}
+          />
+        ))}
+    </>
   );
 }
 
@@ -154,7 +341,7 @@ function FileActions({
   const handleRename = async () => {
     const next = window.prompt("New path (relative to vault)", file.path);
     if (!next || next === file.path) return;
-    const trimmed = next.trim();
+    const trimmed = normalizeRelativePath(next);
     if (!trimmed) return;
     if (files.some((f) => f.id !== file.id && f.path === trimmed)) {
       window.alert(`Another file already has the path "${trimmed}".`);
@@ -204,10 +391,12 @@ function FileActions({
 
 function FileRow({
   file,
+  depth,
   selected,
   onSelect,
 }: {
   file: VaultFile;
+  depth: number;
   selected: boolean;
   onSelect: (f: VaultFile) => void;
 }) {
@@ -216,7 +405,7 @@ function FileRow({
   return (
     <div
       className={["file-row", selected ? "selected" : ""].join(" ")}
-      style={styles.fileRow}
+      style={{ ...styles.fileRow, paddingLeft: 12 + depth * 16 }}
       onClick={() => onSelect(file)}
     >
       <span style={styles.fileIcon}>{extIcon(ext)}</span>
@@ -254,10 +443,93 @@ function ConnectionRow({
   );
 }
 
+function buildExplorerTree(files: VaultFile[], folders: VaultFolder[]): FolderNode {
+  const root: FolderNode = { path: null, name: "All files", folders: [], files: [] };
+  const nodes = new Map<string, FolderNode>();
+
+  const ensureFolder = (path: string | null): FolderNode => {
+    if (!path) return root;
+    const existing = nodes.get(path);
+    if (existing) return existing;
+
+    const node: FolderNode = {
+      path,
+      name: path.split("/").pop() ?? path,
+      folders: [],
+      files: [],
+    };
+    nodes.set(path, node);
+
+    const parent = parentFolder(path);
+    ensureFolder(parent).folders.push(node);
+    return node;
+  };
+
+  for (const folder of folders) ensureFolder(normalizeRelativePath(folder.path));
+  for (const file of files) {
+    const folder = effectiveFolder(file);
+    if (folder) ensureFolder(folder).files.push(file);
+    else root.files.push(file);
+  }
+
+  const sortNode = (node: FolderNode) => {
+    node.folders.sort((a, b) => a.name.localeCompare(b.name));
+    node.files.sort((a, b) => fileName(a).localeCompare(fileName(b)));
+    node.folders.forEach(sortNode);
+  };
+  sortNode(root);
+  return root;
+}
+
+function treeHasFolder(node: FolderNode, path: string): boolean {
+  if (node.path === path) return true;
+  return node.folders.some((folder) => treeHasFolder(folder, path));
+}
+
 function effectiveFolder(file: VaultFile): string | null {
-  if (file.folder) return file.folder;
+  if (file.folder) return normalizeRelativePath(file.folder);
   const idx = file.path.lastIndexOf("/");
-  return idx > 0 ? file.path.slice(0, idx) : null;
+  return idx > 0 ? normalizeRelativePath(file.path.slice(0, idx)) : null;
+}
+
+function folderAncestors(path: string): string[] {
+  const parts = path.split("/");
+  return parts.map((_, index) => parts.slice(0, index + 1).join("/"));
+}
+
+function parentFolder(path: string): string | null {
+  const idx = path.lastIndexOf("/");
+  return idx > 0 ? path.slice(0, idx) : null;
+}
+
+function joinPath(folder: string | null, child: string): string {
+  return folder ? `${folder}/${child}` : child;
+}
+
+function fileName(file: VaultFile): string {
+  return file.path.split("/").pop() ?? file.path;
+}
+
+function normalizeRelativePath(input: string): string {
+  return input
+    .replaceAll("\\", "/")
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join("/");
+}
+
+function sanitizeChildName(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed || trimmed.includes("/") || trimmed.includes("\\")) return "";
+  return trimmed.replace(/[<>:"|?*]/g, "-").replace(/[\u0000-\u001f]/g, "-").trim();
+}
+
+function ensureMarkdownName(name: string): string {
+  if (!name) return "";
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".md") || lower.endsWith(".markdown")) return name;
+  return `${name}.md`;
 }
 
 function isReadableText(file: VaultFile): boolean {
@@ -300,37 +572,77 @@ function extIcon(ext: string): string {
 const styles: Record<string, React.CSSProperties> = {
   container: { display: "flex", height: "100%", overflow: "hidden", background: "var(--bg-base)" },
   sidebar: {
-    width: 300,
+    width: 340,
     borderRight: "1px solid var(--border-color)",
     overflowY: "auto",
     padding: "var(--spacing-3) 0",
     background: "var(--bg-surface)",
   },
-  folderItem: {
-    padding: "var(--spacing-2) var(--spacing-4)",
+  toolbar: {
+    display: "flex",
+    gap: "var(--spacing-2)",
+    flexWrap: "wrap",
+    padding: "0 var(--spacing-3) var(--spacing-3)",
+    borderBottom: "1px solid var(--border-color)",
+    marginBottom: "var(--spacing-2)",
+  },
+  tree: { paddingBottom: "var(--spacing-4)" },
+  folderRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: "var(--spacing-2)",
+    padding: "var(--spacing-2) var(--spacing-3)",
     cursor: "pointer",
     fontSize: 13,
     color: "var(--text-secondary)",
     whiteSpace: "nowrap",
     overflow: "hidden",
-    textOverflow: "ellipsis",
     transition: "background var(--transition-fast), color var(--transition-fast)",
   },
   folderActive: {
     background: "var(--bg-surface-active)",
     color: "var(--text-primary)",
-    fontWeight: 500,
+    fontWeight: 600,
   },
-  fileList: {
-    marginTop: "var(--spacing-2)",
-    borderTop: "1px solid var(--border-color)",
-    paddingTop: "var(--spacing-2)",
+  disclosure: {
+    width: 18,
+    height: 18,
+    border: "none",
+    background: "transparent",
+    color: "var(--text-muted)",
+    cursor: "pointer",
+    padding: 0,
+    flexShrink: 0,
+    fontSize: 12,
   },
+  rootIcon: {
+    color: "var(--accent-primary)",
+    border: "1px solid var(--border-color)",
+    borderRadius: "var(--radius-sm)",
+    padding: "1px 4px",
+    fontSize: 10,
+    fontWeight: 700,
+    minWidth: 34,
+    textAlign: "center",
+    flexShrink: 0,
+  },
+  folderIcon: {
+    color: "var(--accent-warning)",
+    border: "1px solid var(--border-color)",
+    borderRadius: "var(--radius-sm)",
+    padding: "1px 4px",
+    fontSize: 10,
+    fontWeight: 700,
+    minWidth: 30,
+    textAlign: "center",
+    flexShrink: 0,
+  },
+  folderName: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   fileRow: {
     display: "flex",
     alignItems: "center",
     gap: "var(--spacing-2)",
-    padding: "var(--spacing-2) var(--spacing-4)",
+    padding: "var(--spacing-2) var(--spacing-3)",
     cursor: "pointer",
     fontSize: 13,
     transition: "background var(--transition-fast), border var(--transition-fast)",

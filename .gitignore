@@ -11,6 +11,7 @@ target/
 Thumbs.db
 *.log
 .wrangler/
+openbrain-smoke-vault/
 .claude/settings.local.json
 .claude/worktrees/
 .cursor/

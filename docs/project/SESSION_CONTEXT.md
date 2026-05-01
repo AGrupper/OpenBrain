@@ -12,7 +12,7 @@ session so the next session can start from repo truth instead of chat history.
 - Pushed handoff commit before browser smoke confirmation: `a55f089`
   (`Update OpenBrain session context after search fix`)
 - Final handoff update records the browser smoke confirmation.
-- Working tree at final handoff: clean after commit and push
+- Current session adds deterministic Architect smoke mode and a persistent folder explorer.
 
 ## Completed
 
@@ -35,6 +35,13 @@ session so the next session can start from repo truth instead of chat history.
 - The desktop app now reconciles the selected reader file after vault reloads, so deleted files do
   not stay selected after the list refreshes.
 - Browser smoke confirmed the latest search and reader fixes work in the running app.
+- The Architect now has deterministic smoke mode for local review-loop testing without provider API
+  calls.
+- Supabase migration `004_folders.sql` adds persistent folder records.
+- The Worker now exposes `/folders` and `/files/text`.
+- The desktop List view is now an expandable persistent folder explorer.
+- The desktop app can create folders and blank Markdown notes directly in the app.
+- Manual file import now targets the selected folder in the explorer instead of always `Inbox`.
 
 ## Verified
 
@@ -47,6 +54,11 @@ Last verified on 2026-05-01:
 - `npm.cmd run typecheck`
 - `npm.cmd run lint`
 - `npm.cmd run format:check`
+- `services/worker`: `npm.cmd run typecheck`
+- `services/worker`: `npm.cmd test`
+- `apps/desktop`: `npm.cmd run typecheck`
+- `apps/desktop`: `npm.cmd run build`
+- `apps/desktop/src-tauri`: `cargo test`
 
 Manual smoke verified:
 
@@ -64,6 +76,10 @@ Manual smoke verified:
 - Review Inbox loads and shows the correct empty state when no pending suggestions exist.
 - Graph loads without crashing with the current one-file vault.
 - Settings masks the local auth token.
+- Deterministic Architect smoke created reviewable link, tag, and folder suggestions after
+  `003_architect.sql` was applied.
+- Persistent folder explorer loads after `004_folders.sql` is applied.
+- Creating a folder and blank note directly in the app works and persists.
 
 ## Local Setup Notes
 
@@ -73,17 +89,18 @@ Manual smoke verified:
 - The desktop token `VITE_AUTH_TOKEN` must match the Worker token `OPENBRAIN_AUTH_TOKEN`.
 - Wrangler uses `.dev.vars` plural, not `.dev.var`.
 - `SUPABASE_SERVICE_KEY` belongs only in Worker/local server env, never in the desktop env.
+- After adding database migrations manually in Supabase SQL Editor, use `notify pgrst, 'reload schema';`
+  or restart the local Worker before testing new routes.
 
 ## Next Targets
 
-Start with the working import/list/reader loop and move outward:
+Start with the working persistent explorer and Review Inbox loop:
 
-1. Move to Review Inbox and Architect suggestions:
-   - Run `services/architect-agent` jobs against imported files.
-   - Confirm pending suggestions appear in Review Inbox.
-   - Confirm approving/rejecting suggestions updates Worker/Supabase state correctly.
+1. Polish the folder explorer:
+   - Replace prompt-based folder/note creation with inline controls or a compact modal.
+   - Add clearer empty-folder and selected-folder states.
 2. Verify approved relationship surfaces:
-   - Create or approve at least one link suggestion.
+   - Approve a deterministic smoke link suggestion.
    - Confirm approved links appear in the reader and Graph view.
 3. Verify vault-grounded Architect chat:
    - Ask a question answerable from imported vault content and confirm source citations.
@@ -95,5 +112,7 @@ Start with the working import/list/reader loop and move outward:
   explicit warning and approval.
 - Do not reintroduce folder sync into v1 without a product decision.
 - Do not allow The Architect to silently move, delete, rename, tag, summarize, or link files.
+- Do not add folder rename/move until recursive R2 object movement and DB path updates are handled
+  as one deliberate feature.
 - Keep changes simple and scoped. Prefer proving the current product loop before adding new
   architecture.

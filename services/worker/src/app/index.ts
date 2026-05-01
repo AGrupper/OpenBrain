@@ -3,6 +3,7 @@ import { handleLinks } from "../routes/links";
 import { handleSearch } from "../routes/search";
 import { handleCorrections } from "../routes/corrections";
 import { handleArchitect } from "../routes/architect";
+import { handleFolders } from "../routes/folders";
 import { handleTelegram } from "../telegram/webhook";
 
 export interface Env {
@@ -59,6 +60,7 @@ export default {
 
     let response: Response;
     if (path.startsWith("/files")) response = await handleFiles(request, env, url);
+    else if (path.startsWith("/folders")) response = await handleFolders(request, env, url);
     else if (path.startsWith("/links")) response = await handleLinks(request, env, url);
     else if (path.startsWith("/search")) response = await handleSearch(request, env, url);
     else if (path.startsWith("/corrections")) response = await handleCorrections(request, env, url);

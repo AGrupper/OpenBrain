@@ -177,10 +177,108 @@ describe("handleFiles — PUT /files/upload", () => {
     });
     const res = await handleFiles(req, env, new URL(req.url));
     expect(res.status).toBe(201);
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual([
+      expect.objectContaining({ path: "Projects", parent_path: null }),
+      expect.objectContaining({ path: "Projects/OpenBrain", parent_path: "Projects" }),
+    ]);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
       folder: "Projects/OpenBrain",
       text_content: body,
     });
+  });
+});
+
+describe("handleFiles — POST /files/text", () => {
+  it("creates a markdown file in R2 and stores its metadata", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("[]", { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ path: "Projects" }]), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            {
+              id: "file-1",
+              path: "Projects/OpenBrain/notes.md",
+              size: 7,
+              sha256: "hash",
+              mime: "text/markdown",
+              folder: "Projects/OpenBrain",
+              updated_at: "now",
+            },
+          ]),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ id: "job-1" }]), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files/text", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: "Projects/OpenBrain/notes.md", content: "# Hello" }),
+    });
+    const res = await handleFiles(req, env, new URL(req.url));
+
+    expect(res.status).toBe(201);
+    expect(env.VAULT_BUCKET.put).toHaveBeenCalledWith(
+      "Projects/OpenBrain/notes.md",
+      expect.any(Uint8Array),
+      expect.objectContaining({
+        httpMetadata: { contentType: "text/markdown" },
+        sha256: expect.any(String),
+      }),
+    );
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual([
+      expect.objectContaining({ path: "Projects", parent_path: null }),
+      expect.objectContaining({ path: "Projects/OpenBrain", parent_path: "Projects" }),
+    ]);
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toMatchObject({
+      path: "Projects/OpenBrain/notes.md",
+      folder: "Projects/OpenBrain",
+      text_content: "# Hello",
+      needs_embedding: true,
+      needs_linking: true,
+      needs_tagging: true,
+    });
+    expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({
+      file_id: "file-1",
+      status: "pending",
+    });
+  });
+
+  it("rejects non-markdown file paths", async () => {
+    vi.stubGlobal("fetch", vi.fn());
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files/text", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: "Projects/OpenBrain/notes.txt", content: "Hello" }),
+    });
+    const res = await handleFiles(req, env, new URL(req.url));
+
+    expect(res.status).toBe(400);
+    expect(env.VAULT_BUCKET.put).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate file paths", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () => new Response(JSON.stringify([{ id: "existing-file" }]), { status: 200 }),
+      ),
+    );
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files/text", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: "Projects/OpenBrain/notes.md", content: "Hello" }),
+    });
+    const res = await handleFiles(req, env, new URL(req.url));
+
+    expect(res.status).toBe(409);
+    expect(env.VAULT_BUCKET.put).not.toHaveBeenCalled();
   });
 });
 
@@ -325,7 +423,9 @@ describe("handleFiles — PATCH /files/:id with path change", () => {
       .fn()
       // 1st call: db.query for current path
       .mockResolvedValueOnce(new Response(JSON.stringify([{ path: "old/n.md" }]), { status: 200 }))
-      // 2nd call: db.patch result
+      // 2nd call: ensure destination parent folder exists
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ path: "new" }]), { status: 200 }))
+      // 3rd call: db.patch result
       .mockResolvedValueOnce(
         new Response(JSON.stringify([{ id: "abc", path: "new/n.md" }]), { status: 200 }),
       );

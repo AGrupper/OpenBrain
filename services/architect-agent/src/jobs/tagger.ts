@@ -4,21 +4,40 @@
  */
 import { fileURLToPath } from "node:url";
 import type { VaultFile } from "../../../../packages/shared/src/types";
+import { deterministicOrganization, isDeterministicProvider } from "./deterministic";
 
 const API = process.env.OPENBRAIN_API_URL!;
 const TOKEN = process.env.OPENBRAIN_AUTH_TOKEN!;
 const MAX_FILES = parseInt(process.env.MAX_FILES_PER_RUN ?? "20");
-const MODEL_PROVIDER = process.env.ARCHITECT_MODEL_PROVIDER ?? "openai";
 const MODEL = process.env.ARCHITECT_MODEL ?? "gpt-4.1-mini";
 
 const headers = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
+
+function sanitizeApiErrorBody(body: string): string {
+  const redacted = body
+    .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/g, "Bearer [REDACTED]")
+    .replace(/(AUTHORIZATION<\/td>\s*<td>\s*)[^<]+/gi, "$1[REDACTED]");
+
+  const pgrstMessage = redacted.match(/&quot;message&quot;:&quot;([\s\S]*?)&quot;}/);
+  if (pgrstMessage) {
+    return `Supabase error: ${pgrstMessage[1]
+      .replace(/&#39;/g, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/&amp;/g, "&")}`;
+  }
+
+  const compact = redacted.replace(/\s+/g, " ").trim();
+  return compact.length > 1200 ? `${compact.slice(0, 1200)}... [truncated]` : compact;
+}
 
 async function apiFetch(path: string, opts: RequestInit = {}) {
   const res = await fetch(`${API}${path}`, {
     ...opts,
     headers: { ...headers, ...((opts.headers as Record<string, string>) ?? {}) },
   });
-  if (!res.ok) throw new Error(`API ${path} failed ${res.status}: ${await res.text()}`);
+  if (!res.ok) {
+    throw new Error(`API ${path} failed ${res.status}: ${sanitizeApiErrorBody(await res.text())}`);
+  }
   if (res.status === 204) return null;
   return res.json();
 }
@@ -39,12 +58,18 @@ export async function getRecentCorrections(): Promise<string> {
   return `\nRecent corrections to learn from:\n${lines.join("\n")}\n`;
 }
 
-async function askArchitectToOrganize(
+export async function askArchitectToOrganize(
   filePath: string,
   existingFolders: string[],
   existingTags: string[],
   corrections: string,
 ): Promise<{ folder: string; tags: string[] }> {
+  const provider = process.env.ARCHITECT_MODEL_PROVIDER ?? "openai";
+
+  if (isDeterministicProvider(provider)) {
+    return deterministicOrganization(filePath);
+  }
+
   const filename = filePath.split("/").pop() ?? filePath;
   const folderList = existingFolders.slice(0, 30).join(", ");
   const tagList = existingTags.slice(0, 50).join(", ");
@@ -64,7 +89,7 @@ ${corrections}
 Respond with JSON only:
 {"folder": "suggested/folder/path", "tags": ["tag1", "tag2", "tag3"]}`;
 
-  if (MODEL_PROVIDER === "anthropic") {
+  if (provider === "anthropic") {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -82,7 +107,7 @@ Respond with JSON only:
     return JSON.parse(data.content[0].text);
   }
 
-  if (MODEL_PROVIDER === "openai") {
+  if (provider === "openai") {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -99,7 +124,7 @@ Respond with JSON only:
     return JSON.parse(data.choices[0].message.content);
   }
 
-  if (MODEL_PROVIDER === "ollama") {
+  if (provider === "ollama") {
     const base = process.env.OLLAMA_BASE_URL ?? "http://localhost:11434";
     const res = await fetch(`${base}/v1/chat/completions`, {
       method: "POST",
@@ -114,7 +139,7 @@ Respond with JSON only:
     return JSON.parse(data.choices[0].message.content);
   }
 
-  throw new Error(`Unsupported ARCHITECT_MODEL_PROVIDER: ${MODEL_PROVIDER}`);
+  throw new Error(`Unsupported ARCHITECT_MODEL_PROVIDER: ${provider}`);
 }
 
 export async function main() {
