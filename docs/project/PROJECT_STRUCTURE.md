@@ -1,6 +1,7 @@
 # OpenBrain Project Structure
 
-This file explains the repository in plain English. Start here when you want to understand where things live.
+This file explains the repository in plain English. Start here when you want to understand where
+things live. For current session state, read `docs/project/SESSION_CONTEXT.md`.
 
 ## The Product Goal
 
