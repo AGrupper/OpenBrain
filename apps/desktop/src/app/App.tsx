@@ -33,7 +33,12 @@ export default function App() {
     setLoading(true);
     api.files
       .list()
-      .then(setFiles)
+      .then((nextFiles) => {
+        setFiles(nextFiles);
+        setSelectedFile((current) =>
+          current ? (nextFiles.find((file) => file.id === current.id) ?? null) : null,
+        );
+      })
       .catch((e) => setError(String(e)))
       .finally(() => setLoading(false));
   }, []);

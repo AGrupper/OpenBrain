@@ -35,7 +35,10 @@ export function ListView({ files, selectedFile, onSelect, onChange }: Props) {
       fetch(`${import.meta.env.VITE_API_URL}/files/${selectedFile.id}/download`, {
         headers: { Authorization: `Bearer ${import.meta.env.VITE_AUTH_TOKEN}` },
       })
-        .then((r) => r.text())
+        .then((r) => {
+          if (!r.ok) throw new Error(`Download failed: ${r.status}`);
+          return r.text();
+        })
         .then(setPreview)
         .catch(() => setPreview(null));
     } else {

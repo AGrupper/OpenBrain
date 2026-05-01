@@ -29,6 +29,40 @@ function db(env: Env) {
   };
 }
 
+interface SearchRow {
+  id: string;
+  path: string;
+  size: number;
+  sha256: string;
+  mime: string;
+  updated_at: string;
+}
+
+interface FtsSearchRow extends SearchRow {
+  rank: number;
+  snippet: string;
+}
+
+function toVaultFile(row: SearchRow): VaultFile {
+  return {
+    id: row.id,
+    path: row.path,
+    size: row.size,
+    sha256: row.sha256,
+    mime: row.mime,
+    updated_at: row.updated_at,
+  } satisfies VaultFile;
+}
+
+function pathMatchScore(path: string, query: string): number {
+  const pathLower = path.toLowerCase();
+  const queryLower = query.toLowerCase();
+  const fileName = pathLower.split("/").pop() ?? pathLower;
+  if (pathLower === queryLower || fileName === queryLower) return 1;
+  if (fileName.includes(queryLower)) return 0.75;
+  return 0.6;
+}
+
 export async function handleSearch(request: Request, env: Env, url: URL): Promise<Response> {
   if (request.method !== "GET") return new Response("Method not allowed", { status: 405 });
 
@@ -42,29 +76,33 @@ export async function handleSearch(request: Request, env: Env, url: URL): Promis
     const ftsResults = (await db(env).rpc("search_files", {
       query_text: query,
       result_limit: limit,
-    })) as Array<{
-      id: string;
-      path: string;
-      size: number;
-      sha256: string;
-      mime: string;
-      updated_at: string;
-      rank: number;
-      snippet: string;
-    }>;
+    })) as FtsSearchRow[];
 
-    const results: SearchResult[] = ftsResults.map((row) => ({
-      file: {
-        id: row.id,
-        path: row.path,
-        size: row.size,
-        sha256: row.sha256,
-        mime: row.mime,
-        updated_at: row.updated_at,
-      } satisfies VaultFile,
-      score: row.rank,
-      snippet: row.snippet,
-    }));
+    const pathResults = (await db(env).query("files", {
+      path: `ilike.*${query.trim()}*`,
+      select: "id,path,size,sha256,mime,updated_at",
+      limit: String(limit),
+      order: "updated_at.desc",
+    })) as SearchRow[];
+
+    const resultsById = new Map<string, SearchResult>();
+    for (const row of ftsResults) {
+      resultsById.set(row.id, {
+        file: toVaultFile(row),
+        score: row.rank,
+        snippet: row.snippet,
+      });
+    }
+    for (const row of pathResults) {
+      if (resultsById.has(row.id)) continue;
+      resultsById.set(row.id, {
+        file: toVaultFile(row),
+        score: pathMatchScore(row.path, query.trim()),
+        snippet: `Path match: **${row.path}**`,
+      });
+    }
+
+    const results = [...resultsById.values()].slice(0, limit);
 
     return Response.json({ results, total: results.length });
   } catch (err) {
