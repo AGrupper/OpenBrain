@@ -1,7 +1,10 @@
 mod importer;
 
 use importer::{upload_local_file, ImportConfig};
-use std::{collections::HashSet, path::PathBuf};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
 
 #[derive(serde::Serialize)]
 struct ImportFailure {
@@ -36,7 +39,7 @@ fn sanitize_file_name(name: &str) -> String {
     }
 }
 
-fn unique_inbox_path(path: &PathBuf, used: &mut HashSet<String>) -> Result<String, String> {
+fn unique_inbox_path(path: &Path, used: &mut HashSet<String>) -> Result<String, String> {
     let file_name = path
         .file_name()
         .and_then(|n| n.to_str())
@@ -136,4 +139,34 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![import_files])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sanitize_file_name_replaces_invalid_characters() {
+        assert_eq!(sanitize_file_name(r#" ../bad:name?.md "#), "-bad-name-.md");
+        assert_eq!(sanitize_file_name("..."), "untitled");
+        assert_eq!(sanitize_file_name(""), "untitled");
+    }
+
+    #[test]
+    fn unique_inbox_path_deduplicates_remote_paths() {
+        let mut used = HashSet::new();
+
+        assert_eq!(
+            unique_inbox_path(Path::new("C:/notes/report.md"), &mut used).unwrap(),
+            "Inbox/report.md"
+        );
+        assert_eq!(
+            unique_inbox_path(Path::new("C:/other/report.md"), &mut used).unwrap(),
+            "Inbox/report (2).md"
+        );
+        assert_eq!(
+            unique_inbox_path(Path::new("C:/other/report"), &mut used).unwrap(),
+            "Inbox/report"
+        );
+    }
 }
