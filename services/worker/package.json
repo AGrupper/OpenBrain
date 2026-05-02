@@ -10,7 +10,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@openbrain/shared": "*"
+    "@openbrain/shared": "*",
+    "fflate": "^0.8.2"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20240524.0",

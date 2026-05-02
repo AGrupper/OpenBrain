@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, type Mock } from "vitest";
 import { handleArchitect } from "./architect";
 import type { Env } from "../app";
 
-function makeEnv(): Env {
+function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
     SUPABASE_URL: "https://stub.supabase.co",
     SUPABASE_SERVICE_KEY: "service-key",
@@ -12,6 +12,7 @@ function makeEnv(): Env {
     OPENAI_API_KEY: "openai-key",
     ARCHITECT_MODEL: "test-model",
     VAULT_BUCKET: {} as R2Bucket,
+    ...overrides,
   };
 }
 
@@ -110,17 +111,174 @@ describe("handleArchitect - chat", () => {
 
     expect(res.status).toBe(200);
     expect(body.answer).toContain("[1]");
-    expect(body.sources).toEqual([
-      {
-        file_id: "file-1",
-        path: "Projects/OpenBrain/plan.md",
-        snippet: "OpenBrain uses The Architect for vault-grounded chat.",
-        score: 0.9,
-      },
-    ]);
+    expect(body.sources).toHaveLength(1);
+    expect(body.sources[0]).toMatchObject({
+      file_id: "file-1",
+      path: "Projects/OpenBrain/plan.md",
+      snippet: "OpenBrain uses The Architect for vault-grounded chat.",
+    });
+    // score is now the RRF combined score (1 / (60 + 1)) since this hit only the FTS list
+    expect(body.sources[0].score).toBeCloseTo(1 / 61);
 
     const llmCall = calls.find((call) => call.url.includes("api.openai.com"));
     expect(llmCall?.body).toMatchObject({ model: "test-model" });
     expect(JSON.stringify(llmCall?.body)).toContain("OpenBrain uses The Architect");
+  });
+
+  it("returns a vector-only hit when FTS finds nothing", async () => {
+    const { calls } = recordFetch([
+      // FTS RPC: empty
+      () => new Response(JSON.stringify([]), { status: 200 }),
+      // Vector RPC: one hit
+      () =>
+        new Response(
+          JSON.stringify([
+            {
+              id: "file-vec",
+              path: "Notes/elderly-muscle.md",
+              rank: 0.82,
+              snippet: "Sarcopenia is age-related muscle loss in older adults.",
+            },
+          ]),
+          { status: 200 },
+        ),
+      () => new Response(JSON.stringify([{ id: "session-1" }]), { status: 201 }),
+      () => new Response(JSON.stringify([{ id: "message-user" }]), { status: 201 }),
+      () =>
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: "Sarcopenia is age-related muscle loss. [1]" } }],
+          }),
+          { status: 200 },
+        ),
+      () => new Response(JSON.stringify([{ id: "message-answer" }]), { status: 201 }),
+      () => new Response(JSON.stringify([{ id: "source-1" }]), { status: 201 }),
+    ]);
+
+    const req = new Request("https://api.openbrain.dev/architect/chat", {
+      method: "POST",
+      body: JSON.stringify({ message: "muscle wasting in elderly" }),
+    });
+
+    const res = await handleArchitect(
+      req,
+      makeEnv({ EMBEDDING_PROVIDER: "deterministic" }),
+      new URL(req.url),
+    );
+    const body = (await res.json()) as {
+      sources: Array<{ file_id: string; path: string }>;
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.sources).toHaveLength(1);
+    expect(body.sources[0]).toMatchObject({
+      file_id: "file-vec",
+      path: "Notes/elderly-muscle.md",
+    });
+    expect(calls[0].url).toContain("/rpc/search_files");
+    expect(calls[1].url).toContain("/rpc/search_files_by_embedding");
+  });
+
+  it("blends FTS and vector results via RRF and prefers FTS snippet on overlap", async () => {
+    recordFetch([
+      // FTS: [file-1 rank1, file-2 rank2]
+      () =>
+        new Response(
+          JSON.stringify([
+            { id: "file-1", path: "a.md", rank: 0.9, snippet: "**FTS hit** for file-1." },
+            { id: "file-2", path: "b.md", rank: 0.5, snippet: "FTS hit for file-2." },
+          ]),
+          { status: 200 },
+        ),
+      // Vector: [file-3 rank1, file-1 rank2]
+      () =>
+        new Response(
+          JSON.stringify([
+            { id: "file-3", path: "c.md", rank: 0.95, snippet: "vector snippet for file-3" },
+            { id: "file-1", path: "a.md", rank: 0.7, snippet: "vector snippet for file-1" },
+          ]),
+          { status: 200 },
+        ),
+      () => new Response(JSON.stringify([{ id: "session-1" }]), { status: 201 }),
+      () => new Response(JSON.stringify([{ id: "message-user" }]), { status: 201 }),
+      () =>
+        new Response(
+          JSON.stringify({ choices: [{ message: { content: "Combined answer." } }] }),
+          { status: 200 },
+        ),
+      () => new Response(JSON.stringify([{ id: "message-answer" }]), { status: 201 }),
+      () => new Response(JSON.stringify([{ id: "source-a" }]), { status: 201 }),
+      () => new Response(JSON.stringify([{ id: "source-b" }]), { status: 201 }),
+      () => new Response(JSON.stringify([{ id: "source-c" }]), { status: 201 }),
+    ]);
+
+    const req = new Request("https://api.openbrain.dev/architect/chat", {
+      method: "POST",
+      body: JSON.stringify({ message: "anything" }),
+    });
+
+    const res = await handleArchitect(
+      req,
+      makeEnv({ EMBEDDING_PROVIDER: "deterministic" }),
+      new URL(req.url),
+    );
+    const body = (await res.json()) as {
+      sources: Array<{ file_id: string; snippet: string }>;
+    };
+
+    // file-1 appears in both lists → highest combined RRF score → ranked first.
+    // Its snippet should be the FTS one (with ** highlight markers), not the vector one.
+    expect(body.sources[0].file_id).toBe("file-1");
+    expect(body.sources[0].snippet).toBe("**FTS hit** for file-1.");
+    // file-3 (vec rank 1) outranks file-2 (fts rank 2) because 1/(60+1) > 1/(60+2).
+    expect(body.sources[1].file_id).toBe("file-3");
+    expect(body.sources[2].file_id).toBe("file-2");
+  });
+
+  it("falls back to FTS-only when query embedding fails", async () => {
+    const { calls } = recordFetch([
+      // Gemini embed → 500
+      () => new Response("upstream broke", { status: 500 }),
+      // FTS still answers
+      () =>
+        new Response(
+          JSON.stringify([
+            {
+              id: "file-fts",
+              path: "Notes/keyword.md",
+              rank: 0.7,
+              snippet: "keyword snippet",
+            },
+          ]),
+          { status: 200 },
+        ),
+      () => new Response(JSON.stringify([{ id: "session-1" }]), { status: 201 }),
+      () => new Response(JSON.stringify([{ id: "message-user" }]), { status: 201 }),
+      () =>
+        new Response(JSON.stringify({ choices: [{ message: { content: "Answer." } }] }), {
+          status: 200,
+        }),
+      () => new Response(JSON.stringify([{ id: "message-answer" }]), { status: 201 }),
+      () => new Response(JSON.stringify([{ id: "source-fts" }]), { status: 201 }),
+    ]);
+
+    const req = new Request("https://api.openbrain.dev/architect/chat", {
+      method: "POST",
+      body: JSON.stringify({ message: "exact keyword" }),
+    });
+
+    const res = await handleArchitect(
+      req,
+      makeEnv({ EMBEDDING_PROVIDER: "gemini", GEMINI_API_KEY: "broken-key" }),
+      new URL(req.url),
+    );
+    const body = (await res.json()) as { sources: Array<{ file_id: string }> };
+
+    expect(res.status).toBe(200);
+    expect(body.sources).toHaveLength(1);
+    expect(body.sources[0].file_id).toBe("file-fts");
+    // Gemini embed was attempted; vector RPC was NOT called because embedding failed.
+    expect(calls[0].url).toContain("generativelanguage.googleapis.com");
+    expect(calls.some((c) => c.url.includes("search_files_by_embedding"))).toBe(false);
   });
 });

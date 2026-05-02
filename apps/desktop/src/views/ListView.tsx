@@ -57,7 +57,9 @@ export function ListView({
       .then(setLinks)
       .catch(() => setLinks([]));
 
-    if (isReadableText(selectedFile)) {
+    if (selectedFile.text_content) {
+      setPreview(selectedFile.text_content);
+    } else if (isReadableText(selectedFile)) {
       fetch(`${import.meta.env.VITE_API_URL}/files/${selectedFile.id}/download`, {
         headers: { Authorization: `Bearer ${import.meta.env.VITE_AUTH_TOKEN}` },
       })

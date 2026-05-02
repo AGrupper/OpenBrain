@@ -5,11 +5,22 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 # Non-secret env vars go here. Secrets are set via: wrangler secret put <KEY>
+EMBEDDING_PROVIDER = "gemini"
+ARCHITECT_MODEL_PROVIDER = "openai"
+ARCHITECT_MODEL = "deepseek-chat"
+GEMINI_EMBEDDING_MODEL = "gemini-embedding-2"
+OPENAI_BASE_URL = "https://api.deepseek.com/v1"
+MAX_FILES_PER_RUN = "20"
 
 [[r2_buckets]]
 binding = "VAULT_BUCKET"
 bucket_name = "openbrain-vault"
 
+# Cron trigger: hourly backup sweep. Primary trigger is event-driven on file ingest.
+[triggers]
+crons = ["0 * * * *"]
+
 # Supabase connection is via SUPABASE_URL + SUPABASE_SERVICE_KEY secrets
 # Telegram bot token is via TELEGRAM_BOT_TOKEN secret
 # Auth bearer token is via OPENBRAIN_AUTH_TOKEN secret
+# Provider API keys: GEMINI_API_KEY, OPENAI_API_KEY (DeepSeek key here when using DeepSeek)

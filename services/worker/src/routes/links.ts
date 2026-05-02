@@ -86,36 +86,7 @@ export async function handleLinks(request: Request, env: Env, url: URL): Promise
         confidence: number;
         reason: string;
       };
-
-      // Check trust threshold - auto-approve obvious links if trust is established.
-      const trustRows = (await db(env).query("trust_metrics", {
-        id: "eq.1",
-        select: "obvious_links_silent",
-      })) as { obvious_links_silent: boolean }[];
-      const silentMode = trustRows[0]?.obvious_links_silent ?? false;
-      const isObvious = body.confidence >= 0.85;
-
-      let status: Link["status"] = "pending";
-      if (silentMode && isObvious) {
-        status = "auto_approved";
-      }
-
-      const rows = (await db(env).upsert("links", {
-        file_a_id: body.file_a_id,
-        file_b_id: body.file_b_id,
-        confidence: body.confidence,
-        reason: body.reason,
-        status,
-        updated_at: new Date().toISOString(),
-      })) as Link[];
-
-      const link = rows[0];
-
-      // Send Telegram approval request for non-auto-approved links
-      if (link.status === "pending") {
-        await sendTelegramApproval(env, link);
-      }
-
+      const link = await proposeLink(env, body);
       return Response.json(link, { status: 201 });
     }
 
@@ -159,6 +130,41 @@ export async function handleLinks(request: Request, env: Env, url: URL): Promise
     console.error(err);
     return new Response(String(err), { status: 500 });
   }
+}
+
+export async function proposeLink(
+  env: Env,
+  body: { file_a_id: string; file_b_id: string; confidence: number; reason: string },
+): Promise<Link> {
+  // Check trust threshold - auto-approve obvious links if trust is established.
+  const trustRows = (await db(env).query("trust_metrics", {
+    id: "eq.1",
+    select: "obvious_links_silent",
+  })) as { obvious_links_silent: boolean }[];
+  const silentMode = trustRows[0]?.obvious_links_silent ?? false;
+  const isObvious = body.confidence >= 0.85;
+
+  let status: Link["status"] = "pending";
+  if (silentMode && isObvious) {
+    status = "auto_approved";
+  }
+
+  const rows = (await db(env).upsert("links", {
+    file_a_id: body.file_a_id,
+    file_b_id: body.file_b_id,
+    confidence: body.confidence,
+    reason: body.reason,
+    status,
+    updated_at: new Date().toISOString(),
+  })) as Link[];
+
+  const link = rows[0];
+
+  if (link.status === "pending") {
+    await sendTelegramApproval(env, link);
+  }
+
+  return link;
 }
 
 async function sendTelegramApproval(env: Env, link: Link): Promise<void> {

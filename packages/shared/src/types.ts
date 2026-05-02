@@ -13,6 +13,7 @@ export interface VaultFile {
   status?: FileStatus;
   tags?: string[];
   folder?: string;
+  text_content?: string | null;
 }
 
 export interface VaultFolder {

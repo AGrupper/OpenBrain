@@ -5,6 +5,7 @@ import { handleCorrections } from "../routes/corrections";
 import { handleArchitect } from "../routes/architect";
 import { handleFolders } from "../routes/folders";
 import { handleTelegram } from "../telegram/webhook";
+import { runLinker, runTagger } from "../jobs";
 
 export interface Env {
   VAULT_BUCKET: R2Bucket;
@@ -13,8 +14,23 @@ export interface Env {
   TELEGRAM_BOT_TOKEN: string;
   TELEGRAM_CHAT_ID: string;
   OPENBRAIN_AUTH_TOKEN: string;
-  OPENAI_API_KEY?: string;
+
+  // Architect provider config (all optional with sensible defaults)
+  EMBEDDING_PROVIDER?: string;
+  ARCHITECT_MODEL_PROVIDER?: string;
   ARCHITECT_MODEL?: string;
+  ARCHITECT_DETERMINISTIC?: string;
+  MAX_FILES_PER_RUN?: string;
+
+  // Provider keys
+  GEMINI_API_KEY?: string;
+  GEMINI_EMBEDDING_MODEL?: string;
+  OPENAI_API_KEY?: string;
+  OPENAI_BASE_URL?: string;
+  OPENAI_EMBEDDING_MODEL?: string;
+  ANTHROPIC_API_KEY?: string;
+  VOYAGE_API_KEY?: string;
+  VOYAGE_EMBEDDING_MODEL?: string;
 }
 
 const CORS_HEADERS: Record<string, string> = {
@@ -40,7 +56,7 @@ function auth(request: Request, env: Env): Response | null {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
 
@@ -59,7 +75,7 @@ export default {
     if (authError) return withCors(authError);
 
     let response: Response;
-    if (path.startsWith("/files")) response = await handleFiles(request, env, url);
+    if (path.startsWith("/files")) response = await handleFiles(request, env, url, ctx);
     else if (path.startsWith("/folders")) response = await handleFolders(request, env, url);
     else if (path.startsWith("/links")) response = await handleLinks(request, env, url);
     else if (path.startsWith("/search")) response = await handleSearch(request, env, url);
@@ -68,5 +84,10 @@ export default {
     else response = new Response("Not found", { status: 404 });
 
     return withCors(response);
+  },
+
+  async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(runLinker(env).catch((err) => console.error("[scheduled] linker failed:", err)));
+    ctx.waitUntil(runTagger(env).catch((err) => console.error("[scheduled] tagger failed:", err)));
   },
 };

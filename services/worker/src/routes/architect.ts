@@ -8,6 +8,7 @@ import type {
   ArchitectSuggestionStatus,
   ArchitectSuggestionType,
 } from "@openbrain/shared";
+import { askLLM, embedText } from "../lib/providers";
 
 const ARCHITECT_SYSTEM_PROMPT = `You are The Architect, OpenBrain's vault-only AI.
 Answer only from the vault context provided in this request.
@@ -270,27 +271,96 @@ async function createChatSession(env: Env): Promise<string> {
   return rows[0].id;
 }
 
+interface SearchRow {
+  id: string;
+  path: string;
+  rank: number;
+  snippet: string;
+}
+
 async function retrieveVaultSources(
   env: Env,
   query: string,
   limit: number,
 ): Promise<ArchitectChatSource[]> {
-  const rows = (await db(env).rpc("search_files", {
-    query_text: query,
-    result_limit: limit,
-  })) as Array<{
-    id: string;
-    path: string;
-    rank: number;
-    snippet: string;
-  }>;
+  let queryEmbedding: number[] | null = null;
+  try {
+    queryEmbedding = await embedText(env, query, "RETRIEVAL_QUERY");
+  } catch (err) {
+    console.error("[architect.chat] query embedding failed, falling back to FTS:", err);
+  }
 
-  return rows.map((row) => ({
-    file_id: row.id,
-    path: row.path,
-    snippet: row.snippet,
-    score: row.rank,
-  }));
+  const candidateLimit = Math.max(limit * 2, limit);
+  const ftsPromise = (
+    db(env).rpc("search_files", {
+      query_text: query,
+      result_limit: candidateLimit,
+    }) as Promise<SearchRow[]>
+  ).catch((err) => {
+    console.error("[architect.chat] FTS search failed:", err);
+    return [] as SearchRow[];
+  });
+
+  const vecPromise: Promise<SearchRow[]> = queryEmbedding
+    ? (
+        db(env).rpc("search_files_by_embedding", {
+          // PostgREST can't cast a JSON array to vector(1024); pass as text string instead.
+          query_embedding: `[${queryEmbedding.join(",")}]`,
+          result_limit: candidateLimit,
+        }) as Promise<SearchRow[]>
+      ).catch((err) => {
+        console.error("[architect.chat] vector search failed:", err);
+        return [] as SearchRow[];
+      })
+    : Promise.resolve([] as SearchRow[]);
+
+  const [ftsRows, vecRows] = await Promise.all([ftsPromise, vecPromise]);
+  console.log(
+    `[architect.chat] query=${JSON.stringify(query.slice(0, 80))} ` +
+      `fts=${ftsRows.length} vec=${vecRows.length} ` +
+      `embed=${queryEmbedding ? "ok" : "skipped"}`,
+  );
+  return blendByRRF(ftsRows, vecRows, limit);
+}
+
+function blendByRRF(
+  fts: SearchRow[],
+  vec: SearchRow[],
+  limit: number,
+): ArchitectChatSource[] {
+  const k = 60;
+  const merged = new Map<
+    string,
+    { row: SearchRow; score: number; ftsSnippet?: string }
+  >();
+
+  fts.forEach((row, i) => {
+    merged.set(row.id, {
+      row,
+      score: 1 / (k + i + 1),
+      ftsSnippet: row.snippet,
+    });
+  });
+
+  vec.forEach((row, i) => {
+    const score = 1 / (k + i + 1);
+    const existing = merged.get(row.id);
+    if (existing) {
+      existing.score += score;
+    } else {
+      merged.set(row.id, { row, score });
+    }
+  });
+
+  return [...merged.values()]
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit)
+    .map(({ row, score, ftsSnippet }) => ({
+      file_id: row.id,
+      path: row.path,
+      snippet: ftsSnippet ?? row.snippet,
+      score,
+    }));
 }
 
 async function askArchitect(
@@ -298,37 +368,14 @@ async function askArchitect(
   message: string,
   sources: ArchitectChatSource[],
 ): Promise<string> {
-  if (!env.OPENAI_API_KEY) {
-    throw new Error("OPENAI_API_KEY is not configured for The Architect");
-  }
-
   const context = sources
     .map((source, index) => `[${index + 1}] ${source.path}\n${source.snippet}`)
     .join("\n\n");
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${env.OPENAI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: env.ARCHITECT_MODEL ?? "gpt-4.1-mini",
-      messages: [
-        { role: "system", content: ARCHITECT_SYSTEM_PROMPT },
-        {
-          role: "user",
-          content: `Vault context:\n${context}\n\nQuestion: ${message}`,
-        },
-      ],
-      temperature: 0.2,
-    }),
+  const answer = await askLLM(env, `Vault context:\n${context}\n\nQuestion: ${message}`, {
+    systemPrompt: ARCHITECT_SYSTEM_PROMPT,
+    temperature: 0.2,
   });
 
-  if (!res.ok) throw new Error(`Architect LLM failed: ${await res.text()}`);
-  const data = (await res.json()) as { choices: { message: { content: string } }[] };
-  return (
-    data.choices[0]?.message.content?.trim() ||
-    "I do not know from the vault. The Architect returned an empty answer."
-  );
+  return answer.trim() || "I do not know from the vault. The Architect returned an empty answer.";
 }

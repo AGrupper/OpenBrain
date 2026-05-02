@@ -1,6 +1,8 @@
+import { unzipSync } from "fflate";
 import type { Env } from "../app";
 import type { VaultFile } from "@openbrain/shared";
 import { ensureFolderRows } from "./folders";
+import { runLinkerForFile, runTaggerForFile } from "../jobs";
 
 interface UploadMetadata {
   path: string;
@@ -105,14 +107,71 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function shouldStoreTextContent(mime: string, path: string): boolean {
+function extractTextContent(mime: string, path: string, blob: ArrayBuffer): string | null {
   const lowerPath = path.toLowerCase();
-  return (
+  if (
     mime.startsWith("text/") ||
     lowerPath.endsWith(".md") ||
     lowerPath.endsWith(".markdown") ||
     lowerPath.endsWith(".txt")
-  );
+  ) {
+    return new TextDecoder().decode(blob);
+  }
+  if (
+    lowerPath.endsWith(".docx") ||
+    mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  ) {
+    return extractDocxText(blob);
+  }
+  return null;
+}
+
+function extractDocxText(blob: ArrayBuffer): string | null {
+  try {
+    const files = unzipSync(new Uint8Array(blob), {
+      filter: (f) => f.name === "word/document.xml",
+    });
+    const xmlBytes = files["word/document.xml"];
+    if (!xmlBytes) return null;
+    return docxXmlToMarkdown(new TextDecoder().decode(xmlBytes));
+  } catch {
+    return null;
+  }
+}
+
+function docxXmlToMarkdown(xml: string): string | null {
+  const paragraphs: string[] = [];
+
+  for (const para of xml.match(/<w:p[ >][\s\S]*?<\/w:p>/g) ?? []) {
+    const style = (para.match(/<w:pStyle w:val="([^"]+)"/) ?? [])[1] ?? "";
+    const isList = /<w:numPr>/.test(para);
+
+    let text = "";
+    for (const run of para.match(/<w:r[ >][\s\S]*?<\/w:r>/g) ?? []) {
+      const rpr = (run.match(/<w:rPr>([\s\S]*?)<\/w:rPr>/) ?? [])[1] ?? "";
+      const bold = /<w:b\/>|<w:b>/.test(rpr) && !/<w:b w:val="0"/.test(rpr);
+      const italic = /<w:i\/>|<w:i>/.test(rpr) && !/<w:i w:val="0"/.test(rpr);
+      const t = (run.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) ?? [])
+        .map((m) => m.replace(/<[^>]+>/g, ""))
+        .join("");
+      if (!t) continue;
+      if (bold && italic) text += `***${t}***`;
+      else if (bold) text += `**${t}**`;
+      else if (italic) text += `*${t}*`;
+      else text += t;
+    }
+
+    text = text.trim();
+    if (!text) continue;
+
+    const headingLevel = (style.match(/^[Hh]eading(\d)$/) ?? [])[1];
+    if (headingLevel) text = `${"#".repeat(Number(headingLevel))} ${text}`;
+    else if (isList) text = `- ${text}`;
+
+    paragraphs.push(text);
+  }
+
+  return paragraphs.join("\n\n") || null;
 }
 
 function db(env: Env) {
@@ -172,7 +231,12 @@ function db(env: Env) {
   };
 }
 
-export async function handleFiles(request: Request, env: Env, url: URL): Promise<Response> {
+export async function handleFiles(
+  request: Request,
+  env: Env,
+  url: URL,
+  ctx?: ExecutionContext,
+): Promise<Response> {
   const { method } = request;
   const segments = url.pathname
     .replace(/^\/files/, "")
@@ -264,6 +328,7 @@ export async function handleFiles(request: Request, env: Env, url: URL): Promise
           status: "pending",
           updated_at: new Date().toISOString(),
         });
+        kickArchitect(env, rows[0].id, ctx);
       }
       return Response.json(rows[0], { status: 201 });
     }
@@ -288,9 +353,7 @@ export async function handleFiles(request: Request, env: Env, url: URL): Promise
         httpMetadata: { contentType: meta.mime },
         sha256: meta.sha256,
       });
-      const textContent = shouldStoreTextContent(meta.mime, meta.path)
-        ? new TextDecoder().decode(blob)
-        : null;
+      const textContent = extractTextContent(meta.mime, meta.path, blob);
       const rows = (await db(env).upsert("files", {
         path: meta.path,
         size: meta.size,
@@ -309,6 +372,7 @@ export async function handleFiles(request: Request, env: Env, url: URL): Promise
           status: "pending",
           updated_at: new Date().toISOString(),
         });
+        kickArchitect(env, rows[0].id, ctx);
       }
       return Response.json(rows[0], { status: 201 });
     }
@@ -394,6 +458,20 @@ export async function handleFiles(request: Request, env: Env, url: URL): Promise
     console.error(err);
     return new Response(String(err), { status: 500 });
   }
+}
+
+function kickArchitect(env: Env, fileId: string, ctx?: ExecutionContext): void {
+  if (!ctx) return;
+  ctx.waitUntil(
+    runLinkerForFile(env, fileId).catch((err) =>
+      console.error(`[files] linker failed for ${fileId}:`, err),
+    ),
+  );
+  ctx.waitUntil(
+    runTaggerForFile(env, fileId).catch((err) =>
+      console.error(`[files] tagger failed for ${fileId}:`, err),
+    ),
+  );
 }
 
 async function rpcNeighbors(env: Env, fileId: string, k: number): Promise<unknown[]> {
