@@ -49,6 +49,8 @@ session so the next session can start from repo truth instead of chat history.
 - The folders API returns protected synthetic PARA roots even before matching database rows exist.
 - The desktop List view always shows the PARA roots, protects root deletion, and defaults new
   folders, notes, and imports to `Resources` when no folder is selected.
+- The desktop List view now uses inline folder/note creation controls instead of prompt dialogs for
+  creation.
 - The Architect tagger now asks for PARA folder placements, normalizes non-PARA suggestions under
   `Resources`, and uses PARA-specific Review Inbox wording.
 
@@ -63,6 +65,8 @@ Last verified on 2026-05-04 after the master-plan/PARA slice:
 - `npm.cmd run format:check`
 - `npm.cmd -w apps/desktop run build` passed outside the sandbox after sandboxed esbuild hit
   `spawn EPERM`.
+- After replacing creation prompts with inline controls, `npm.cmd run typecheck`, `npm.cmd run lint`,
+  and `npm.cmd -w apps/desktop run build` passed again.
 - `cargo fmt --all -- --check`
 - `cargo clippy --all-targets --all-features -- -D warnings`
 - `cargo test --all-features`
@@ -124,7 +128,7 @@ Immediate targets:
    - Approve a deterministic smoke link suggestion.
    - Confirm approved links appear in the reader and Graph view.
 2. Continue Milestone 2:
-   - Replace prompt-based folder/note creation with inline controls or a compact modal.
+   - Manually smoke inline folder/note creation in the running desktop app.
    - Keep "All files" available as a neutral view while PARA roots remain first-class.
 
 ## Guardrails

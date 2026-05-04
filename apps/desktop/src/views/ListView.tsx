@@ -37,7 +37,12 @@ export function ListView({
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(PARA_ROOTS));
   const [links, setLinks] = useState<Link[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
+  const [newFolderName, setNewFolderName] = useState("");
+  const [newNoteName, setNewNoteName] = useState("Untitled.md");
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [creating, setCreating] = useState<"folder" | "note" | null>(null);
   const tree = useMemo(() => buildExplorerTree(files, folders), [files, folders]);
+  const creationTarget = selectedFolder ?? PARA_DEFAULT_ROOT;
 
   useEffect(() => {
     if (!selectedFile) return;
@@ -81,52 +86,56 @@ export function ListView({
   }, [selectedFile]);
 
   const createFolder = async () => {
-    const name = window.prompt("Folder name");
-    if (!name) return;
-    const cleanName = sanitizeChildName(name);
+    const cleanName = sanitizeChildName(newFolderName);
     if (!cleanName) {
-      window.alert("Folder name cannot be empty or contain slashes.");
+      setCreateError("Folder name cannot be empty or contain slashes.");
       return;
     }
-    const targetFolder = selectedFolder ?? PARA_DEFAULT_ROOT;
-    const path = joinPath(targetFolder, cleanName);
+    const path = joinPath(creationTarget, cleanName);
     if (folders.some((folder) => folder.path === path) || treeHasFolder(tree, path)) {
-      window.alert(`Folder already exists: ${path}`);
+      setCreateError(`Folder already exists: ${path}`);
       return;
     }
 
+    setCreating("folder");
+    setCreateError(null);
     try {
       await api.folders.create(path);
       setSelectedFolder(path);
       setExpanded((current) => new Set([...current, ...folderAncestors(path)]));
+      setNewFolderName("");
       onChange();
     } catch (e) {
-      window.alert(`Create folder failed: ${String(e)}`);
+      setCreateError(`Create folder failed: ${String(e)}`);
+    } finally {
+      setCreating(null);
     }
   };
 
   const createNote = async () => {
-    const name = window.prompt("New note name", "Untitled.md");
-    if (!name) return;
-    const cleanName = ensureMarkdownName(sanitizeChildName(name));
+    const cleanName = ensureMarkdownName(sanitizeChildName(newNoteName));
     if (!cleanName) {
-      window.alert("Note name cannot be empty or contain slashes.");
+      setCreateError("Note name cannot be empty or contain slashes.");
       return;
     }
-    const targetFolder = selectedFolder ?? PARA_DEFAULT_ROOT;
-    const path = joinPath(targetFolder, cleanName);
+    const path = joinPath(creationTarget, cleanName);
     if (files.some((file) => file.path === path)) {
-      window.alert(`File already exists: ${path}`);
+      setCreateError(`File already exists: ${path}`);
       return;
     }
 
+    setCreating("note");
+    setCreateError(null);
     try {
       const file = await api.files.createText(path, "");
-      setExpanded((current) => new Set([...current, ...folderAncestors(targetFolder)]));
+      setExpanded((current) => new Set([...current, ...folderAncestors(creationTarget)]));
+      setNewNoteName("Untitled.md");
       onSelect(file);
       onChange();
     } catch (e) {
-      window.alert(`Create note failed: ${String(e)}`);
+      setCreateError(`Create note failed: ${String(e)}`);
+    } finally {
+      setCreating(null);
     }
   };
 
@@ -147,12 +156,46 @@ export function ListView({
     <div style={styles.container}>
       <div style={styles.sidebar}>
         <div style={styles.toolbar}>
-          <button className="btn-action" onClick={createFolder}>
-            New folder
-          </button>
-          <button className="btn-action" onClick={createNote}>
-            New note
-          </button>
+          <div style={styles.createTarget}>New items: {creationTarget}</div>
+          <div style={styles.createRow}>
+            <input
+              style={styles.createInput}
+              value={newFolderName}
+              onChange={(event) => setNewFolderName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void createFolder();
+              }}
+              placeholder="Folder name"
+              disabled={creating !== null}
+            />
+            <button
+              className="btn-action"
+              onClick={() => void createFolder()}
+              disabled={creating !== null}
+            >
+              {creating === "folder" ? "Creating..." : "New folder"}
+            </button>
+          </div>
+          <div style={styles.createRow}>
+            <input
+              style={styles.createInput}
+              value={newNoteName}
+              onChange={(event) => setNewNoteName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") void createNote();
+              }}
+              placeholder="Note name"
+              disabled={creating !== null}
+            />
+            <button
+              className="btn-action"
+              onClick={() => void createNote()}
+              disabled={creating !== null}
+            >
+              {creating === "note" ? "Creating..." : "New note"}
+            </button>
+          </div>
+          {createError && <div style={styles.createError}>{createError}</div>}
           <button
             className="btn-action"
             onClick={() => onImportFiles(selectedFolder ?? PARA_DEFAULT_ROOT)}
@@ -619,10 +662,42 @@ const styles: Record<string, React.CSSProperties> = {
   toolbar: {
     display: "flex",
     gap: "var(--spacing-2)",
-    flexWrap: "wrap",
+    flexDirection: "column",
     padding: "0 var(--spacing-3) var(--spacing-3)",
     borderBottom: "1px solid var(--border-color)",
     marginBottom: "var(--spacing-2)",
+  },
+  createTarget: {
+    color: "var(--text-muted)",
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: "uppercase",
+  },
+  createRow: {
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    gap: "var(--spacing-2)",
+    alignItems: "center",
+  },
+  createInput: {
+    minWidth: 0,
+    height: 32,
+    border: "1px solid var(--border-color)",
+    borderRadius: "var(--radius-sm)",
+    background: "var(--bg-base)",
+    color: "var(--text-primary)",
+    padding: "0 var(--spacing-2)",
+    fontSize: 12,
+    outline: "none",
+  },
+  createError: {
+    color: "var(--accent-danger)",
+    background: "rgba(239, 68, 68, 0.08)",
+    border: "1px solid rgba(239, 68, 68, 0.25)",
+    borderRadius: "var(--radius-sm)",
+    padding: "var(--spacing-2)",
+    fontSize: 12,
+    lineHeight: 1.4,
   },
   tree: { paddingBottom: "var(--spacing-4)" },
   folderRow: {

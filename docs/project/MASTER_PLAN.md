@@ -92,8 +92,8 @@ The graph wiki answers: "What does OpenBrain understand?"
 - Done: update folder creation/import defaults so new material lives under PARA roots by default.
 - Done: add Architect suggestions for PARA placement.
 - Done: add review UI copy that explains why a file belongs in a PARA category.
+- Done: replace prompt-based folder/note creation with inline controls.
 - Keep "All files" available as a neutral view.
-- Next: replace prompt dialogs with compact folder/note controls.
 - Next: manually smoke the local Review Inbox loop with deterministic Architect suggestions.
 
 ### 3. Markdown Note Workspace
