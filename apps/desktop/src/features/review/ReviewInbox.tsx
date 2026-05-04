@@ -24,9 +24,10 @@ type ReviewItem = LinkReviewItem | SuggestionReviewItem;
 
 interface Props {
   onSelectFile: (file: VaultFile) => void;
+  onChange: () => void;
 }
 
-export function ReviewInbox({ onSelectFile }: Props) {
+export function ReviewInbox({ onSelectFile, onChange }: Props) {
   const [items, setItems] = useState<ReviewItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,6 +76,7 @@ export function ReviewInbox({ onSelectFile }: Props) {
     try {
       await api.links.update(id, status);
       setItems((current) => current.filter((item) => item.kind !== "link" || item.link.id !== id));
+      onChange();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -89,6 +91,7 @@ export function ReviewInbox({ onSelectFile }: Props) {
       setItems((current) =>
         current.filter((item) => item.kind !== "suggestion" || item.suggestion.id !== id),
       );
+      onChange();
     } catch (e) {
       setError(String(e));
     } finally {

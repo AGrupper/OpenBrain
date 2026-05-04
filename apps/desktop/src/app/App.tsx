@@ -107,7 +107,9 @@ export default function App() {
         {!loading && !error && view === "graph" && (
           <GraphView files={files} onSelect={selectInReader} />
         )}
-        {!loading && !error && view === "review" && <ReviewInbox onSelectFile={selectInReader} />}
+        {!loading && !error && view === "review" && (
+          <ReviewInbox onSelectFile={selectInReader} onChange={loadFiles} />
+        )}
         {!loading && !error && view === "chat" && <ArchitectChat onSelectFile={selectInReader} />}
       </main>
       <SettingsModal

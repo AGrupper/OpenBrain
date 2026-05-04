@@ -51,6 +51,8 @@ export const api = {
     get: (id: string) => get<VaultFile>(`/files/${id}`),
     linksForFile: (id: string) => get<Link[]>(`/links/for-file/${id}`),
     createText: (path: string, content = "") => post<VaultFile>("/files/text", { path, content }),
+    saveText: (id: string, content: string) =>
+      patch<VaultFile | VaultFile[]>(`/files/${id}`, { text_content: content }),
     patch: (id: string, body: Partial<VaultFile>) => patch<VaultFile>(`/files/${id}`, body),
     rename: (id: string, newPath: string) => patch<VaultFile>(`/files/${id}`, { path: newPath }),
     delete: (id: string) => del(`/files/${id}`),

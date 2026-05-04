@@ -30,6 +30,9 @@ Manual check:
 Never paste API keys or tokens into chat. Set secrets locally through environment variables,
 `.env.local`, or `wrangler secret put`.
 
+For local Worker development, Wrangler reads `services/worker/.dev.vars`. A `services/worker/.env`
+file is not enough for `wrangler dev` unless you explicitly load it yourself.
+
 ## Step 1: Desktop Build Tools
 
 Tauri requires the MSVC C++ compiler on Windows. Install **Desktop development with C++** from the

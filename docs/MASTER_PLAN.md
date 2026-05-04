@@ -50,9 +50,9 @@ The graph wiki answers: "What does OpenBrain understand?"
 | Milestone                             | Status      | Acceptance                                                                                                        |
 | ------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------- |
 | 0. Baseline And Master Plan           | Complete    | Master plan exists, session context is current, formatting gate is fixed, and baseline checks pass.               |
-| 1. Prove Existing Vault Loop          | Pending     | Import -> process -> review -> approve -> reader/graph works locally.                                             |
+| 1. Prove Existing Vault Loop          | In progress | Import -> process -> review -> approve -> reader/graph works locally.                                             |
 | 2. PARA Raw Vault                     | In progress | Files and notes can be browsed by PARA, and Architect suggestions can place items into PARA without silent moves. |
-| 3. Markdown Note Workspace            | Pending     | Markdown notes can be created, edited, saved, searched, renamed, and deleted.                                     |
+| 3. Markdown Note Workspace            | Complete    | Markdown notes can be created, edited, saved, searched, renamed, and deleted.                                     |
 | 4. Graph-First Architect Wiki         | Pending     | Imported sources can produce visible knowledge nodes and readable generated pages.                                |
 | 5. Broad Ingestion: Files And URLs    | Pending     | Supported files and URLs become searchable vault items with clear processing state.                               |
 | 6. Embeddings And Media Understanding | Pending     | Search/chat can retrieve from raw files, media chunks, transcripts, and wiki pages.                               |
@@ -84,6 +84,8 @@ The graph wiki answers: "What does OpenBrain understand?"
 - Use deterministic Architect smoke mode.
 - Approve/reject folder, tag, and link suggestions.
 - Confirm approved links appear in reader and graph.
+- Done: local screenshots confirmed the reader opens vault files, Graph renders smoke vault nodes,
+  and inline PARA folder/note creation works.
 - Fix only bugs found in this loop.
 
 ### 2. PARA Raw Vault
@@ -99,9 +101,12 @@ The graph wiki answers: "What does OpenBrain understand?"
 ### 3. Markdown Note Workspace
 
 - Replace prompt dialogs with compact in-app controls.
-- Add Markdown edit/save flow.
-- Update file content, hash, size, text content, and reprocessing flags on save.
-- Handle unsaved changes and save errors.
+- Done: replace prompt dialogs with compact in-app controls for folder/note creation.
+- Done: add Markdown edit/save/cancel flow in the reader.
+- Done: update R2 file content, hash, size, text content, and reprocessing flags on save.
+- Done: create a pending Architect job after Markdown saves.
+- Done: handle unsaved changes for in-list navigation and save errors.
+- Done: manually smoked edit -> save -> reload -> search with a unique phrase in the running app.
 
 ### 4. Graph-First Architect Wiki
 

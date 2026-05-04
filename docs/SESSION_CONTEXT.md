@@ -13,7 +13,11 @@ session so the next session can start from repo truth instead of chat history.
 - Pushed handoff commit before browser smoke confirmation: `a55f089`
   (`Update OpenBrain session context after search fix`)
 - Final handoff update records the browser smoke confirmation.
-- Current session adds deterministic Architect smoke mode and a persistent folder explorer.
+- Current session fixed deterministic Architect smoke execution from `services/architect-agent`,
+  clarified local Worker env file usage, verified the review API loop against the running local
+  Worker, tightened Review Inbox reload behavior after decisions, and added the first Markdown
+  edit/save workspace slice.
+- The user confirmed the Markdown edit/save/search smoke works in the running app.
 
 ## Completed
 
@@ -57,18 +61,50 @@ session so the next session can start from repo truth instead of chat history.
   and `docs/setup` subfolders were removed.
 - Desktop frontend source is now organized as `src/app`, `src/features/*`, and `src/shared/*`
   instead of broad `src/views`, `src/components`, `src/lib`, and `src/styles` buckets.
+- `services/architect-agent` can now run `npm run smoke:run` under `tsx` after marking
+  `@openbrain/shared` as an ES module package and using explicit `.ts` imports for shared source
+  files.
+- `services/worker/.env.example` and `docs/CLOUD_SETUP.md` now clarify that local Worker dev uses
+  `services/worker/.dev.vars`; `services/worker/.env` alone is not read by `wrangler dev`.
+- A disposable pending tag suggestion for `smoke/scratch-to-delete.md` was approved through the
+  local Worker API, updating its tags to `architect-smoke`.
+- The desktop Review Inbox now reloads vault state after link or Architect suggestion decisions so
+  approved folder/tag/link changes are reflected without relying on a manual app reload.
+- Browser screenshots confirmed the local app can open a vault file in the reader, render smoke
+  vault nodes in Graph, and create `Resources/SmokeManual/manual-smoke.md` from inline PARA controls.
+- Markdown notes can now be edited in the reader and saved back through the Worker.
+- Markdown saves rewrite the R2 object, recompute `sha256` and `size`, update `text_content`, set
+  reprocessing flags, and create a pending Architect job.
+- The reader now has `Edit`, `Save`, and `Cancel` controls for Markdown files, save-error display,
+  and a discard prompt for in-list navigation while a note has unsaved changes.
+- Milestone 3 is complete after manual smoke confirmed Markdown create/edit/save/search behavior.
 
 ## Verified
 
-Last verified on 2026-05-04 after the master-plan/PARA slice:
+Last verified on 2026-05-04 after the Markdown edit/save manual smoke:
 
-- `npm.cmd test` passed with 89 tests when run outside the sandbox after sandboxed Vitest hit
+- `npm.cmd test` passed with 92 tests when run outside the sandbox after sandboxed Vitest hit
   `spawn EPERM`.
 - `npm.cmd run typecheck`
 - `npm.cmd run lint`
 - `npm.cmd run format:check`
 - `npm.cmd -w apps/desktop run build` passed outside the sandbox after sandboxed esbuild hit
   `spawn EPERM`.
+- Earlier on 2026-05-04 after the Architect smoke/env fix:
+- `npm.cmd -w services/architect-agent run smoke:run` passed against the local Worker after loading
+  the token from `services/worker/.dev.vars` and overriding `OPENBRAIN_API_URL` to
+  `http://127.0.0.1:8787`; it found no remaining files needing linking/tagging.
+- Local Worker API smoke:
+  - `GET /files?limit=20` returned 9 files.
+  - `GET /architect/suggestions?status=pending` returned 14 pending suggestions before the
+    disposable approval.
+  - `PATCH /architect/suggestions/138bf912-8f7c-41cd-9328-750319dd8ef6` approved the disposable tag
+    suggestion.
+  - `GET /files/2e447f85-2df3-41d4-9654-5b0e6ee11e39` showed
+    `smoke/scratch-to-delete.md` with `architect-smoke`.
+  - `GET /links/for-file/2e447f85-2df3-41d4-9654-5b0e6ee11e39` returned one approved reader-facing
+    link.
+- Earlier on 2026-05-04 after the master-plan/PARA slice:
 - After replacing creation prompts with inline controls, `npm.cmd run typecheck`, `npm.cmd run lint`,
   and `npm.cmd -w apps/desktop run build` passed again.
 - After flattening docs and reorganizing desktop source folders, `npm.cmd run typecheck`,
@@ -112,14 +148,25 @@ Manual smoke verified:
 - Settings masks the local auth token.
 - Deterministic Architect smoke created reviewable link, tag, and folder suggestions after
   `003_architect.sql` was applied.
+- Deterministic Architect smoke runner now starts successfully from `services/architect-agent`.
+- The local Worker currently has two approved links, including the disposable smoke related pair;
+  approved links are visible through the graph data endpoint and the reader `links/for-file` API.
+- Approving a disposable Review Inbox tag suggestion through the API updates the target file
+  metadata.
 - Persistent folder explorer loads after `004_folders.sql` is applied.
 - Creating a folder and blank note directly in the app works and persists.
+- Local screenshots on 2026-05-04 confirmed `Resources/SmokeManual/manual-smoke.md` creation in the
+  running app.
+- The user confirmed Markdown edit, save, reload/reselect, and search smoke worked in the running
+  app.
 
 ## Local Setup Notes
 
 - Do not commit local secrets.
 - Desktop local env lives in `apps/desktop/.env.local`.
 - Worker local env lives in `services/worker/.dev.vars`.
+- `services/worker/.env` is not read by `wrangler dev` by default. If values were placed there,
+  copy them into `.dev.vars` or explicitly load them before starting the Worker.
 - The desktop token `VITE_AUTH_TOKEN` must match the Worker token `OPENBRAIN_AUTH_TOKEN`.
 - Wrangler uses `.dev.vars` plural, not `.dev.var`.
 - `SUPABASE_SERVICE_KEY` belongs only in Worker/local server env, never in the desktop env.
@@ -132,14 +179,14 @@ Continue from `docs/MASTER_PLAN.md`.
 
 Immediate targets:
 
-1. Start Milestone 1:
-   - Approve a deterministic smoke link suggestion.
-   - Confirm approved links appear in the reader and Graph view.
-2. Continue Milestone 2:
-   - Manually smoke inline folder/note creation in the running desktop app.
-   - Keep "All files" available as a neutral view while PARA roots remain first-class.
-3. Continue repo structure cleanup if useful:
-   - Reorganize Worker source by feature after this desktop/docs slice is verified.
+1. Close out Milestone 1/2 status:
+   - Confirm whether the already-approved smoke links are acceptable despite current low-contrast
+     Graph edges, or defer that UI polish to the later UI pass as planned.
+   - Delete disposable smoke notes/folders if keeping the vault clean.
+2. Continue from `docs/MASTER_PLAN.md`:
+   - Next functional milestone is Graph-First Architect Wiki.
+   - Start with a small buildable design slice for generated wiki pages and graph node detail,
+     without touching real auth, migrations, deployment config, or UI polish.
 
 ## Guardrails
 

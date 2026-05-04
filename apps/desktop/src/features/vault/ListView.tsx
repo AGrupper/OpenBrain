@@ -43,8 +43,14 @@ export function ListView({
   const [newNoteName, setNewNoteName] = useState("Untitled.md");
   const [createError, setCreateError] = useState<string | null>(null);
   const [creating, setCreating] = useState<"folder" | "note" | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const tree = useMemo(() => buildExplorerTree(files, folders), [files, folders]);
   const creationTarget = selectedFolder ?? PARA_DEFAULT_ROOT;
+  const canEditSelected = selectedFile ? isMarkdownFile(selectedFile) : false;
+  const isDirty = editing && draft !== (preview ?? "");
 
   useEffect(() => {
     if (!selectedFile) return;
@@ -63,8 +69,14 @@ export function ListView({
     if (!selectedFile) {
       setLinks([]);
       setPreview(null);
+      setEditing(false);
+      setDraft("");
+      setSaveError(null);
       return;
     }
+    setEditing(false);
+    setDraft("");
+    setSaveError(null);
     api.files
       .linksForFile(selectedFile.id)
       .then(setLinks)
@@ -86,6 +98,13 @@ export function ListView({
       setPreview(null);
     }
   }, [selectedFile]);
+
+  const confirmDiscard = () => !isDirty || window.confirm("Discard unsaved changes to this note?");
+
+  const selectFile = (file: VaultFile) => {
+    if (!confirmDiscard()) return;
+    onSelect(file);
+  };
 
   const createFolder = async () => {
     const cleanName = sanitizeChildName(newFolderName);
@@ -115,6 +134,7 @@ export function ListView({
   };
 
   const createNote = async () => {
+    if (!confirmDiscard()) return;
     const cleanName = ensureMarkdownName(sanitizeChildName(newNoteName));
     if (!cleanName) {
       setCreateError("Note name cannot be empty or contain slashes.");
@@ -138,6 +158,38 @@ export function ListView({
       setCreateError(`Create note failed: ${String(e)}`);
     } finally {
       setCreating(null);
+    }
+  };
+
+  const startEdit = () => {
+    setDraft(preview ?? selectedFile?.text_content ?? "");
+    setSaveError(null);
+    setEditing(true);
+  };
+
+  const cancelEdit = () => {
+    if (!confirmDiscard()) return;
+    setDraft("");
+    setSaveError(null);
+    setEditing(false);
+  };
+
+  const saveDraft = async () => {
+    if (!selectedFile) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const updated = await api.files.saveText(selectedFile.id, draft);
+      const savedFile = Array.isArray(updated) ? updated[0] : updated;
+      setPreview(draft);
+      setEditing(false);
+      setDraft("");
+      if (savedFile) onSelect(savedFile);
+      onChange();
+    } catch (e) {
+      setSaveError(`Save failed: ${String(e)}`);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -236,7 +288,7 @@ export function ListView({
                 })
               }
               onSelectFolder={setSelectedFolder}
-              onSelectFile={onSelect}
+              onSelectFile={selectFile}
             />
           ))}
           {tree.files.map((file) => (
@@ -245,7 +297,7 @@ export function ListView({
               file={file}
               depth={0}
               selected={selectedFile?.id === file.id}
-              onSelect={onSelect}
+              onSelect={selectFile}
             />
           ))}
           {!tree.folders.length && !tree.files.length && <div style={styles.empty}>No files</div>}
@@ -274,12 +326,46 @@ export function ListView({
               files={files}
               onChange={onChange}
               onSelect={onSelect}
+              disabled={editing}
             />
-            {preview && (
+            {canEditSelected && (
+              <div style={styles.editorActions}>
+                {!editing ? (
+                  <button className="btn-action" onClick={startEdit}>
+                    Edit
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      className="btn-action"
+                      onClick={() => void saveDraft()}
+                      disabled={saving || !isDirty}
+                    >
+                      {saving ? "Saving..." : "Save"}
+                    </button>
+                    <button className="btn-action" onClick={cancelEdit} disabled={saving}>
+                      Cancel
+                    </button>
+                    {isDirty && <span style={styles.unsaved}>Unsaved changes</span>}
+                  </>
+                )}
+              </div>
+            )}
+            {saveError && <div style={styles.saveError}>{saveError}</div>}
+            {editing ? (
+              <textarea
+                style={styles.editor}
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                spellCheck
+              />
+            ) : preview ? (
               <div className="markdown-body" style={styles.markdown}>
                 <ReactMarkdown>{preview}</ReactMarkdown>
               </div>
-            )}
+            ) : canEditSelected ? (
+              <div style={styles.emptyNote}>Empty note.</div>
+            ) : null}
             {!preview && !isReadableText(selectedFile) && (
               <div style={styles.nonText}>
                 Original file preserved. Text extraction and richer previews can be added for this
@@ -294,7 +380,7 @@ export function ListView({
                     key={link.id}
                     link={link}
                     currentFileId={selectedFile.id}
-                    onSelect={onSelect}
+                    onSelect={selectFile}
                   />
                 ))}
               </div>
@@ -393,15 +479,18 @@ function FileActions({
   files,
   onChange,
   onSelect,
+  disabled = false,
 }: {
   file: VaultFile;
   files: VaultFile[];
   onChange: () => void;
   onSelect: (f: VaultFile) => void;
+  disabled?: boolean;
 }) {
   const [busy, setBusy] = useState<"rename" | "delete" | null>(null);
 
   const handleRename = async () => {
+    if (disabled) return;
     const next = window.prompt("New path (relative to vault)", file.path);
     if (!next || next === file.path) return;
     const trimmed = normalizeRelativePath(next);
@@ -424,6 +513,7 @@ function FileActions({
   };
 
   const handleDelete = async () => {
+    if (disabled) return;
     if (!window.confirm(`Delete "${file.path}"? This removes it from R2 and Supabase.`)) return;
     setBusy("delete");
     try {
@@ -438,12 +528,12 @@ function FileActions({
 
   return (
     <div style={styles.actions}>
-      <button className="btn-action" disabled={busy !== null} onClick={handleRename}>
+      <button className="btn-action" disabled={busy !== null || disabled} onClick={handleRename}>
         {busy === "rename" ? "Renaming..." : "Rename"}
       </button>
       <button
         className="btn-action btn-action-danger"
-        disabled={busy !== null}
+        disabled={busy !== null || disabled}
         onClick={handleDelete}
       >
         {busy === "delete" ? "Deleting..." : "Delete"}
@@ -613,6 +703,11 @@ function ensureMarkdownName(name: string): string {
   const lower = name.toLowerCase();
   if (lower.endsWith(".md") || lower.endsWith(".markdown")) return name;
   return `${name}.md`;
+}
+
+function isMarkdownFile(file: VaultFile): boolean {
+  const path = file.path.toLowerCase();
+  return path.endsWith(".md") || path.endsWith(".markdown");
 }
 
 function isReadableText(file: VaultFile): boolean {
@@ -811,6 +906,47 @@ const styles: Record<string, React.CSSProperties> = {
     gap: "var(--spacing-2)",
     marginBottom: "var(--spacing-6)",
     flexWrap: "wrap",
+  },
+  editorActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: "var(--spacing-2)",
+    marginBottom: "var(--spacing-3)",
+    flexWrap: "wrap",
+  },
+  unsaved: { color: "var(--accent-warning)", fontSize: 12, fontWeight: 600 },
+  saveError: {
+    color: "var(--accent-danger)",
+    background: "rgba(239, 68, 68, 0.08)",
+    border: "1px solid rgba(239, 68, 68, 0.25)",
+    borderRadius: "var(--radius-sm)",
+    padding: "var(--spacing-2)",
+    fontSize: 12,
+    marginBottom: "var(--spacing-3)",
+  },
+  editor: {
+    width: "100%",
+    minHeight: 420,
+    resize: "vertical",
+    background: "var(--bg-surface)",
+    color: "var(--text-primary)",
+    border: "1px solid var(--border-color)",
+    borderRadius: "var(--radius-lg)",
+    padding: "var(--spacing-4)",
+    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+    fontSize: 14,
+    lineHeight: 1.6,
+    outline: "none",
+    marginBottom: "var(--spacing-6)",
+  },
+  emptyNote: {
+    color: "var(--text-muted)",
+    background: "var(--bg-surface)",
+    border: "1px solid var(--border-color)",
+    borderRadius: "var(--radius-lg)",
+    padding: "var(--spacing-6)",
+    fontSize: 14,
+    marginBottom: "var(--spacing-6)",
   },
   markdown: {
     background: "var(--bg-surface)",

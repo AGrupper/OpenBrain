@@ -3,13 +3,13 @@
  * Run: tsx src/jobs/tagger.ts
  */
 import { fileURLToPath } from "node:url";
-import type { VaultFile } from "../../../../packages/shared/src/types";
+import type { VaultFile } from "../../../../packages/shared/src/types.ts";
 import {
   ensureParaFolderPath,
   PARA_ROOTS,
   paraPlacementReason,
   paraRootDescription,
-} from "../../../../packages/shared/src/para";
+} from "../../../../packages/shared/src/para.ts";
 import { deterministicOrganization, isDeterministicProvider } from "./deterministic";
 
 const API = process.env.OPENBRAIN_API_URL!;

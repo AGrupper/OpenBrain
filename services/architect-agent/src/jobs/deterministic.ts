@@ -1,4 +1,4 @@
-import { ensureParaFolderPath } from "../../../../packages/shared/src/para";
+import { ensureParaFolderPath } from "../../../../packages/shared/src/para.ts";
 
 export const DETERMINISTIC_PROVIDER = "deterministic";
 

@@ -490,6 +490,95 @@ describe("handleFiles — PATCH /files/:id with path change", () => {
   });
 });
 
+describe("handleFiles — PATCH /files/:id with Markdown text_content", () => {
+  it("rewrites the Markdown object and marks the file for reprocessing", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([{ path: "Resources/notes.md" }]), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([{ id: "abc", path: "Resources/notes.md", text_content: "# Updated" }]),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ id: "job-1" }]), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files/abc", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text_content: "# Updated" }),
+    });
+
+    const res = await handleFiles(req, env, new URL(req.url));
+
+    expect(res.status).toBe(200);
+    expect(env.VAULT_BUCKET.put).toHaveBeenCalledWith(
+      "Resources/notes.md",
+      expect.any(Uint8Array),
+      expect.objectContaining({
+        httpMetadata: { contentType: "text/markdown" },
+        sha256: expect.any(String),
+      }),
+    );
+    const patchBody = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(patchBody).toMatchObject({
+      path: "Resources/notes.md",
+      folder: "Resources",
+      text_content: "# Updated",
+      size: 9,
+      sha256: expect.any(String),
+      mime: "text/markdown",
+      needs_embedding: true,
+      needs_linking: true,
+      needs_tagging: true,
+    });
+    expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toMatchObject({
+      file_id: "abc",
+      status: "pending",
+    });
+  });
+
+  it("rejects non-string text_content", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files/abc", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text_content: null }),
+    });
+
+    const res = await handleFiles(req, env, new URL(req.url));
+
+    expect(res.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(env.VAULT_BUCKET.put).not.toHaveBeenCalled();
+  });
+
+  it("rejects text_content updates for non-Markdown files", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([{ path: "Resources/notes.txt" }]), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files/abc", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text_content: "Updated" }),
+    });
+
+    const res = await handleFiles(req, env, new URL(req.url));
+
+    expect(res.status).toBe(400);
+    expect(env.VAULT_BUCKET.put).not.toHaveBeenCalled();
+  });
+});
+
 describe("handleFiles — DELETE /files?path=", () => {
   it("looks up by path, deletes R2 object, then deletes DB row", async () => {
     const fetchMock = vi

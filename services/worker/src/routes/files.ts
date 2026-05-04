@@ -102,6 +102,11 @@ function normalizeFilePath(input: string): string | null {
   return normalized;
 }
 
+function isMarkdownPath(path: string): boolean {
+  const lower = path.toLowerCase();
+  return lower.endsWith(".md") || lower.endsWith(".markdown");
+}
+
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -397,21 +402,64 @@ export async function handleFiles(
       return new Response(null, { status: 204 });
     }
 
-    // PATCH /files/:id — update path, folder, tags, etc.
+    // PATCH /files/:id — update path, folder, tags, Markdown text content, etc.
     // When path changes, copy R2 object to the new key and delete the old one
-    // so renames don't leave orphan blobs.
+    // so renames don't leave orphan blobs. When text_content changes, rewrite
+    // the Markdown body and mark the file for reprocessing.
     if (method === "PATCH" && fileId && !sub) {
       const body = (await request.json()) as Partial<VaultFile>;
-      if (typeof body.path === "string") {
+      if ("text_content" in body && typeof body.text_content !== "string") {
+        return new Response("text_content must be a string", { status: 400 });
+      }
+
+      const hasPathChange = typeof body.path === "string";
+      const hasTextChange = typeof body.text_content === "string";
+
+      if (hasPathChange || hasTextChange) {
         const current = (await db(env).query("files", {
           id: `eq.${fileId}`,
           select: "path",
         })) as { path: string }[];
         if (!current.length) return new Response("Not found", { status: 404 });
         const oldPath = current[0].path;
-        const newPath = body.path;
+        const newPath = hasPathChange ? normalizeFilePath(body.path as string) : oldPath;
+        if (!newPath) return new Response("path is invalid", { status: 400 });
+        if (hasPathChange) {
+          (body as Record<string, unknown>).path = newPath;
+          (body as Record<string, unknown>).folder = folderFromPath(newPath);
+        }
+
+        if (hasTextChange && !isMarkdownPath(newPath)) {
+          return new Response("text_content updates are only supported for Markdown files", {
+            status: 400,
+          });
+        }
+
         if (oldPath !== newPath) {
           await ensureFolderRows(env, folderFromPath(newPath));
+        }
+
+        if (hasTextChange) {
+          const content = body.text_content as string;
+          const bytes = new TextEncoder().encode(content);
+          const sha256 = await sha256Hex(bytes);
+          await env.VAULT_BUCKET.put(newPath, bytes, {
+            httpMetadata: { contentType: "text/markdown" },
+            sha256,
+          });
+          if (oldPath !== newPath) await env.VAULT_BUCKET.delete(oldPath);
+          Object.assign(body, {
+            path: newPath,
+            folder: folderFromPath(newPath),
+            text_content: content,
+            size: bytes.byteLength,
+            sha256,
+            mime: "text/markdown",
+            needs_embedding: true,
+            needs_linking: true,
+            needs_tagging: true,
+          });
+        } else if (oldPath !== newPath) {
           const obj = await env.VAULT_BUCKET.get(oldPath);
           if (obj) {
             await env.VAULT_BUCKET.put(newPath, obj.body, {
@@ -420,12 +468,21 @@ export async function handleFiles(
             await env.VAULT_BUCKET.delete(oldPath);
           }
         }
-        (body as Record<string, unknown>).folder = folderFromPath(newPath);
       }
       const rows = await db(env).patch("files", fileId, {
         ...body,
         updated_at: new Date().toISOString(),
       });
+
+      if (hasTextChange) {
+        await db(env).upsert("architect_jobs", {
+          file_id: fileId,
+          status: "pending",
+          updated_at: new Date().toISOString(),
+        });
+        kickArchitect(env, fileId, ctx);
+      }
+
       return Response.json(rows);
     }
 

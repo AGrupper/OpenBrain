@@ -3,7 +3,7 @@
  * Run: tsx src/jobs/linker.ts
  */
 import { fileURLToPath } from "node:url";
-import type { VaultFile } from "../../../../packages/shared/src/types";
+import type { VaultFile } from "../../../../packages/shared/src/types.ts";
 import {
   deterministicEmbedding,
   deterministicRelatedness,
