@@ -6,7 +6,7 @@ import type {
   SearchResult,
   VaultFile,
   VaultFolder,
-} from "../../../../packages/shared/src/types";
+} from "@openbrain/shared";
 
 const BASE = import.meta.env.VITE_API_URL as string;
 const TOKEN = import.meta.env.VITE_AUTH_TOKEN as string;

@@ -2,7 +2,7 @@
 
 A personal knowledge-management system for importing files, browsing a cloud-backed vault, chatting with The Architect, approving AI-suggested structure, and surfacing knowledge via semantic search.
 
-Start with [docs/product/PRD.md](docs/product/PRD.md) for the product direction, [docs/architecture/TECHNICAL_PLAN.md](docs/architecture/TECHNICAL_PLAN.md) for the architecture, and [docs/project/PROJECT_STRUCTURE.md](docs/project/PROJECT_STRUCTURE.md) for a plain-English repo map.
+Start with [docs/PRD.md](docs/PRD.md) for the product direction, [docs/TECHNICAL_PLAN.md](docs/TECHNICAL_PLAN.md) for the architecture, and [docs/PROJECT_STRUCTURE.md](docs/PROJECT_STRUCTURE.md) for a plain-English repo map.
 
 ## Architecture
 
@@ -43,7 +43,7 @@ npm run lint
 # Format check
 npm run format:check
 
-# Desktop dev (requires Rust + MSVC toolchain; see docs/setup/CLOUD_SETUP.md)
+# Desktop dev (requires Rust + MSVC toolchain; see docs/CLOUD_SETUP.md)
 npm run dev:desktop
 
 # Worker dev
@@ -52,4 +52,4 @@ npm run dev:worker
 
 ## Secrets
 
-Never paste API keys or tokens into chat. Set them locally through environment variables, `.env.local`, or `wrangler secret put`. See [docs/setup/CLOUD_SETUP.md](docs/setup/CLOUD_SETUP.md) for deployment setup.
+Never paste API keys or tokens into chat. Set them locally through environment variables, `.env.local`, or `wrangler secret put`. See [docs/CLOUD_SETUP.md](docs/CLOUD_SETUP.md) for deployment setup.

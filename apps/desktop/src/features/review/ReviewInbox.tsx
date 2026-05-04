@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import type { ArchitectSuggestion, Link, VaultFile } from "../../../../packages/shared/src/types";
-import { paraPlacementReason } from "../../../../packages/shared/src/para";
-import { api } from "../lib/api";
+import {
+  paraPlacementReason,
+  type ArchitectSuggestion,
+  type Link,
+  type VaultFile,
+} from "@openbrain/shared";
+import { api } from "../../shared/api/api";
 
 interface LinkReviewItem {
   kind: "link";

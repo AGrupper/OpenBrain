@@ -1,7 +1,7 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import ForceGraph2D from "react-force-graph-2d";
-import type { VaultFile, Link } from "../../../../packages/shared/src/types";
-import { api } from "../lib/api";
+import type { Link, VaultFile } from "@openbrain/shared";
+import { api } from "../../shared/api/api";
 
 interface Props {
   files: VaultFile[];

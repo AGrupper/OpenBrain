@@ -1,7 +1,7 @@
 # OpenBrain Master Plan: PARA Vault + Graph-First Architect Wiki
 
 This is the durable implementation plan for OpenBrain. Use this file with
-`docs/project/SESSION_CONTEXT.md` at the start of every work session.
+`docs/SESSION_CONTEXT.md` at the start of every work session.
 
 ## How To Use This Plan
 

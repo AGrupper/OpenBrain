@@ -7,7 +7,7 @@ session so the next session can start from repo truth instead of chat history.
 
 - Branch: `master`
 - Remote: `origin/master`
-- Current implementation direction is tracked in `docs/project/MASTER_PLAN.md`.
+- Current implementation direction is tracked in `docs/MASTER_PLAN.md`.
 - Starting commit for this session: `c37ab89` (`Add OpenBrain session context handoff`)
 - Pushed implementation commit: `4cc6d30` (`Fix vault filename search and stale reader state`)
 - Pushed handoff commit before browser smoke confirmation: `a55f089`
@@ -18,9 +18,9 @@ session so the next session can start from repo truth instead of chat history.
 ## Completed
 
 - The repo was reorganized around the Architect vault direction:
-  - Product docs live in `docs/product/PRD.md`.
-  - Architecture docs live in `docs/architecture/TECHNICAL_PLAN.md`.
-  - Repo map lives in `docs/project/PROJECT_STRUCTURE.md`.
+  - Product docs live in `docs/PRD.md`.
+  - Architecture docs live in `docs/TECHNICAL_PLAN.md`.
+  - Repo map lives in `docs/PROJECT_STRUCTURE.md`.
 - Folder sync was removed from v1. Manual local file import is the core ingestion path.
 - The dedicated OpenBrain AI job service is now `services/architect-agent`.
 - The Worker has routes for files, links, search, corrections, Architect jobs, suggestions, and chat.
@@ -43,7 +43,7 @@ session so the next session can start from repo truth instead of chat history.
 - The desktop List view is now an expandable persistent folder explorer.
 - The desktop app can create folders and blank Markdown notes directly in the app.
 - Manual file import now targets the selected folder in the explorer instead of always `Inbox`.
-- `docs/project/MASTER_PLAN.md` now defines the durable PARA Vault + Graph-First Architect Wiki
+- `docs/MASTER_PLAN.md` now defines the durable PARA Vault + Graph-First Architect Wiki
   implementation roadmap.
 - PARA roots are first-class raw-vault roots: `Projects`, `Areas`, `Resources`, and `Archive`.
 - The folders API returns protected synthetic PARA roots even before matching database rows exist.
@@ -53,6 +53,10 @@ session so the next session can start from repo truth instead of chat history.
   creation.
 - The Architect tagger now asks for PARA folder placements, normalizes non-PARA suggestions under
   `Resources`, and uses PARA-specific Review Inbox wording.
+- Docs are now flat under `docs`; the previous `docs/product`, `docs/architecture`, `docs/project`,
+  and `docs/setup` subfolders were removed.
+- Desktop frontend source is now organized as `src/app`, `src/features/*`, and `src/shared/*`
+  instead of broad `src/views`, `src/components`, `src/lib`, and `src/styles` buckets.
 
 ## Verified
 
@@ -67,6 +71,10 @@ Last verified on 2026-05-04 after the master-plan/PARA slice:
   `spawn EPERM`.
 - After replacing creation prompts with inline controls, `npm.cmd run typecheck`, `npm.cmd run lint`,
   and `npm.cmd -w apps/desktop run build` passed again.
+- After flattening docs and reorganizing desktop source folders, `npm.cmd run typecheck`,
+  `npm.cmd run lint`, `npm.cmd run format:check`, `npm.cmd -w apps/desktop run build`, and
+  `npm.cmd test` passed. The build/test commands needed to run outside the sandbox because Vite and
+  Vitest hit the known `spawn EPERM` restriction inside the sandbox.
 - `cargo fmt --all -- --check`
 - `cargo clippy --all-targets --all-features -- -D warnings`
 - `cargo test --all-features`
@@ -120,7 +128,7 @@ Manual smoke verified:
 
 ## Next Targets
 
-Continue from `docs/project/MASTER_PLAN.md`.
+Continue from `docs/MASTER_PLAN.md`.
 
 Immediate targets:
 
@@ -130,6 +138,8 @@ Immediate targets:
 2. Continue Milestone 2:
    - Manually smoke inline folder/note creation in the running desktop app.
    - Keep "All files" available as a neutral view while PARA roots remain first-class.
+3. Continue repo structure cleanup if useful:
+   - Reorganize Worker source by feature after this desktop/docs slice is verified.
 
 ## Guardrails
 

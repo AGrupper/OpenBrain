@@ -1,23 +1,22 @@
 import { useCallback, useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { AppHeader, type ViewMode } from "../components/AppHeader";
-import { ImportBar } from "../components/ImportBar";
-import { api } from "../lib/api";
-import { ArchitectChat } from "../views/ArchitectChat";
-import { GraphView } from "../views/GraphView";
-import { ListView } from "../views/ListView";
-import { ReviewInbox } from "../views/ReviewInbox";
-import { SearchBar } from "../views/SearchBar";
+import { ArchitectChat } from "../features/architect-chat/ArchitectChat";
+import { GraphView } from "../features/graph/GraphView";
+import { ReviewInbox } from "../features/review/ReviewInbox";
+import { SearchBar } from "../features/search/SearchBar";
 import {
   SettingsModal,
   applyTheme,
   loadTheme,
   persistTheme,
   type Theme,
-} from "../views/SettingsModal";
-import type { VaultFile, VaultFolder } from "../../../../packages/shared/src/types";
-import { PARA_DEFAULT_ROOT } from "../../../../packages/shared/src/para";
+} from "../features/settings/SettingsModal";
+import { ImportBar } from "../features/vault/ImportBar";
+import { ListView } from "../features/vault/ListView";
+import { api } from "../shared/api/api";
+import { AppHeader, type ViewMode } from "../shared/components/AppHeader";
+import { PARA_DEFAULT_ROOT, type VaultFile, type VaultFolder } from "@openbrain/shared";
 
 export default function App() {
   const [view, setView] = useState<ViewMode>("list");

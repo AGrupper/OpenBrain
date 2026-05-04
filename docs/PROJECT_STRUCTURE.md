@@ -1,11 +1,11 @@
 # OpenBrain Project Structure
 
 This file explains the repository in plain English. Start here when you want to understand where
-things live. For current session state, read `docs/project/SESSION_CONTEXT.md`.
+things live. For current session state, read `docs/SESSION_CONTEXT.md`.
 
 ## The Product Goal
 
-Read `docs/product/PRD.md` first. It defines what OpenBrain is supposed to become: a personal AI knowledge vault, not a generic file drive.
+Read `docs/PRD.md` first. It defines what OpenBrain is supposed to become: a personal AI knowledge vault, not a generic file drive.
 
 ## Main Areas
 
@@ -13,7 +13,18 @@ Read `docs/product/PRD.md` first. It defines what OpenBrain is supposed to becom
 
 The root is intentionally small. It keeps files that common tools expect at the top level, such as
 workspace package files, Git ignores, formatter/linter configs, and the GitHub-facing `README.md`.
-Product and architecture documents live under `docs`.
+Product, architecture, setup, and project-status documents live directly under `docs`.
+
+### `docs`
+
+The docs folder is intentionally flat so it is easy to browse from the editor sidebar.
+
+- `PRD.md` defines the product direction.
+- `TECHNICAL_PLAN.md` explains the architecture.
+- `MASTER_PLAN.md` tracks the durable roadmap.
+- `SESSION_CONTEXT.md` tracks recent session state and next steps.
+- `PROJECT_STRUCTURE.md` is this repo map.
+- `CLOUD_SETUP.md` documents local/cloud setup.
 
 ### `apps/desktop`
 
@@ -21,14 +32,15 @@ The desktop app. This is the part you see and use.
 
 - `src/app/App.tsx` wires the main screen together.
 - `src/app/main.tsx` is the desktop frontend entry point.
-- `src/styles/index.css` contains global desktop styling.
-- `src/components` contains reusable app chrome such as the header and import bar.
-- `src/lib/api.ts` is the desktop app's API client.
-- `src/views/ListView.tsx` shows the folder/list vault view and file reader.
-- `src/views/GraphView.tsx` shows approved file connections as a graph.
-- `src/views/SearchBar.tsx` searches the vault.
-- `src/views/ReviewInbox.tsx` lets you approve or reject Architect suggestions.
-- `src/views/ArchitectChat.tsx` lets you ask vault-grounded questions.
+- `src/features/vault` contains the PARA file explorer, reader, and import controls.
+- `src/features/graph` contains the graph view.
+- `src/features/search` contains vault search.
+- `src/features/review` contains the Review Inbox.
+- `src/features/architect-chat` contains vault-grounded Architect chat.
+- `src/features/settings` contains local app settings and theme controls.
+- `src/shared/api/api.ts` is the desktop app's API client.
+- `src/shared/components` contains reusable app chrome such as the header.
+- `src/shared/styles/index.css` contains global desktop styling.
 - `src-tauri/src` contains the native desktop code for local file import commands.
 
 ### `services/worker`
@@ -58,7 +70,7 @@ Shared TypeScript types used by multiple parts of the project.
 Setup and database infrastructure.
 
 - `supabase/migrations` defines the database schema and search/vector functions.
-- Setup docs now live in `docs/setup`.
+- Setup docs live directly under `docs`.
 
 ## How The App Works
 

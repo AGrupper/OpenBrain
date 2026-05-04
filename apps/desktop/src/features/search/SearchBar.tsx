@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SearchResult, VaultFile } from "../../../../packages/shared/src/types";
-import { api } from "../lib/api";
+import type { SearchResult, VaultFile } from "@openbrain/shared";
+import { api } from "../../shared/api/api";
 
 interface Props {
   onSelect: (file: VaultFile) => void;

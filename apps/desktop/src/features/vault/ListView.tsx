@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
-import type { Link, VaultFile, VaultFolder } from "../../../../packages/shared/src/types";
 import {
+  type Link,
   isParaRoot,
   PARA_DEFAULT_ROOT,
   PARA_ROOTS,
   paraRootDescription,
-} from "../../../../packages/shared/src/para";
-import { api } from "../lib/api";
+  type VaultFile,
+  type VaultFolder,
+} from "@openbrain/shared";
+import { api } from "../../shared/api/api";
 
 interface Props {
   files: VaultFile[];

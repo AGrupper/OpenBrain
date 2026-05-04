@@ -1,6 +1,6 @@
 import { useState } from "react";
-import type { ArchitectChatMessage, VaultFile } from "../../../../packages/shared/src/types";
-import { api } from "../lib/api";
+import type { ArchitectChatMessage, VaultFile } from "@openbrain/shared";
+import { api } from "../../shared/api/api";
 
 interface Props {
   onSelectFile: (file: VaultFile) => void;
