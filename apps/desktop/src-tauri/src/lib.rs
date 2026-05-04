@@ -205,8 +205,14 @@ mod tests {
 
     #[test]
     fn sanitize_folder_path_keeps_valid_segments() {
-        assert_eq!(sanitize_folder_path(Some("Projects/OpenBrain")), "Projects/OpenBrain");
-        assert_eq!(sanitize_folder_path(Some(" /bad:name//notes ")), "bad-name/notes");
+        assert_eq!(
+            sanitize_folder_path(Some("Projects/OpenBrain")),
+            "Projects/OpenBrain"
+        );
+        assert_eq!(
+            sanitize_folder_path(Some(" /bad:name//notes ")),
+            "bad-name/notes"
+        );
         assert_eq!(sanitize_folder_path(None), "Inbox");
     }
 }

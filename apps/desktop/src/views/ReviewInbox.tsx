@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ArchitectSuggestion, Link, VaultFile } from "../../../../packages/shared/src/types";
+import { paraPlacementReason } from "../../../../packages/shared/src/para";
 import { api } from "../lib/api";
 
 interface LinkReviewItem {
@@ -97,7 +98,7 @@ export function ReviewInbox({ onSelectFile }: Props) {
         <div>
           <div style={styles.title}>Review Inbox</div>
           <div style={styles.subtitle}>
-            Approve or reject AI-suggested connections before they shape the vault.
+            Approve or reject Architect recommendations before they shape the PARA vault.
           </div>
         </div>
         <button style={styles.secondaryBtn} onClick={load} disabled={loading}>
@@ -190,6 +191,7 @@ function SuggestionCard({
   onDecide: (id: string, status: "approved" | "rejected") => void;
 }) {
   const { suggestion, file } = item;
+  const paraHint = paraHintForSuggestion(suggestion);
   return (
     <div style={styles.card}>
       <div style={styles.cardTop}>
@@ -202,6 +204,7 @@ function SuggestionCard({
       </div>
       <div style={styles.suggestionTitle}>{suggestion.title}</div>
       <div style={styles.reason}>{suggestion.reason}</div>
+      {paraHint && <div style={styles.paraHint}>{paraHint}</div>}
       <DecisionFooter
         confidence={suggestion.confidence ?? undefined}
         busy={busy}
@@ -210,6 +213,13 @@ function SuggestionCard({
       />
     </div>
   );
+}
+
+function paraHintForSuggestion(suggestion: ArchitectSuggestion): string | null {
+  if (suggestion.type !== "folder") return null;
+  const folder = suggestion.payload.folder;
+  if (typeof folder !== "string") return null;
+  return paraPlacementReason(folder);
 }
 
 function DecisionFooter({
@@ -281,6 +291,16 @@ const styles: Record<string, React.CSSProperties> = {
   },
   connector: { color: "#777", fontSize: 12 },
   reason: { color: "#ddd", fontSize: 14, lineHeight: 1.5, marginTop: 12 },
+  paraHint: {
+    color: "#b9c9ff",
+    background: "#141f33",
+    border: "1px solid #2f4770",
+    borderRadius: 6,
+    padding: "8px 10px",
+    fontSize: 12,
+    lineHeight: 1.45,
+    marginTop: 10,
+  },
   suggestionTitle: {
     color: "#f2f2f2",
     fontSize: 15,

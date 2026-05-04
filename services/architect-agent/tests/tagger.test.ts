@@ -91,13 +91,13 @@ describe("deterministic smoke mode", () => {
       await expect(
         askArchitectToOrganize("openbrain-smoke-related-a.md", [], [], ""),
       ).resolves.toEqual({
-        folder: "smoke/related",
+        folder: "Resources/smoke/related",
         tags: ["architect-smoke", "related"],
       });
       await expect(
         askArchitectToOrganize("openbrain-smoke-unrelated.md", [], [], ""),
       ).resolves.toEqual({
-        folder: "smoke/unrelated",
+        folder: "Resources/smoke/unrelated",
         tags: ["architect-smoke", "unrelated"],
       });
     } finally {
@@ -152,7 +152,7 @@ describe("main", () => {
     expect(suggestionBodies[0]).toMatchObject({
       file_id: file.id,
       type: "folder",
-      payload: { folder: "notes" },
+      payload: { folder: "Resources/notes" },
     });
     expect(suggestionBodies[1]).toMatchObject({
       file_id: file.id,
@@ -222,8 +222,9 @@ describe("main", () => {
     await main();
 
     expect(promptsSeen).toHaveLength(2);
-    // First prompt: no existing folders yet
-    expect(promptsSeen[0]).not.toContain("projects");
+    // First prompt starts with PARA roots even when there are no existing user folders yet.
+    expect(promptsSeen[0]).toContain("Projects");
+    expect(promptsSeen[0]).toContain("Resources");
     // Second prompt: "projects" should appear because fileA added it to the cache
     expect(promptsSeen[1]).toContain("projects");
   });

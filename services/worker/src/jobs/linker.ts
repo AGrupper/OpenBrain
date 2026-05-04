@@ -52,7 +52,8 @@ async function processOne(env: Env, file: VaultFile): Promise<void> {
   const title = file.path.split("/").pop() ?? file.path;
 
   // 1. Embed file content (text_content for text/docx files, title as fallback for binaries)
-  const textToEmbed = (file as VaultFile & { text_content?: string | null }).text_content?.slice(0, 8192) || title;
+  const textToEmbed =
+    (file as VaultFile & { text_content?: string | null }).text_content?.slice(0, 8192) || title;
   try {
     const embedding = await embedText(env, textToEmbed, "RETRIEVAL_DOCUMENT");
     await db(env).upsert("embeddings", {

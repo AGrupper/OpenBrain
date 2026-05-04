@@ -36,7 +36,8 @@ describe("normalizeFolderPath", () => {
 describe("handleFolders", () => {
   it("lists folders ordered by path", async () => {
     const fetchMock = vi.fn(
-      async () => new Response(JSON.stringify([{ path: "Projects", name: "Projects" }]), { status: 200 }),
+      async () =>
+        new Response(JSON.stringify([{ path: "Projects", name: "Projects" }]), { status: 200 }),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -45,9 +46,26 @@ describe("handleFolders", () => {
     const res = await handleFolders(req, env, new URL(req.url));
 
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual([{ path: "Projects", name: "Projects" }]);
+    expect(await res.json()).toEqual([
+      expect.objectContaining({ path: "Projects", name: "Projects" }),
+      expect.objectContaining({ path: "Areas", name: "Areas" }),
+      expect.objectContaining({ path: "Resources", name: "Resources" }),
+      expect.objectContaining({ path: "Archive", name: "Archive" }),
+    ]);
     const calls = fetchMock.mock.calls as unknown[][];
     expect(String(calls[0]?.[0] ?? "")).toContain("order=path.asc");
+  });
+
+  it("treats PARA roots as existing folders", async () => {
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/folders", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: "Projects" }),
+    });
+    const res = await handleFolders(req, env, new URL(req.url));
+
+    expect(res.status).toBe(409);
   });
 
   it("creates a folder after checking duplicates and conflicts", async () => {
@@ -55,7 +73,9 @@ describe("handleFolders", () => {
       .fn()
       .mockResolvedValueOnce(new Response("[]", { status: 200 }))
       .mockResolvedValueOnce(new Response("[]", { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify([{ path: "Projects", name: "Projects" }]), { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([{ path: "Projects", name: "Projects" }]), { status: 200 }),
+      )
       .mockResolvedValueOnce(
         new Response(
           JSON.stringify([
@@ -108,16 +128,30 @@ describe("handleFolders", () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(new Response("[]", { status: 200 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify([{ id: "file-1" }]), { status: 200 })) as Mock;
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([{ id: "file-1" }]), { status: 200 }),
+      ) as Mock;
     vi.stubGlobal("fetch", fetchMock);
 
     const env = makeEnv();
-    const req = makeRequest("https://api.openbrain.dev/folders?path=Projects", { method: "DELETE" });
+    const req = makeRequest("https://api.openbrain.dev/folders?path=Projects/OpenBrain", {
+      method: "DELETE",
+    });
     const res = await handleFolders(req, env, new URL(req.url));
 
     expect(res.status).toBe(409);
     const calls = fetchMock.mock.calls as unknown[][];
-    expect(String(calls[1]?.[0] ?? "")).toContain("path=like.Projects%2F%25");
+    expect(String(calls[1]?.[0] ?? "")).toContain("path=like.Projects%2FOpenBrain%2F%25");
+  });
+
+  it("rejects deleting a PARA root", async () => {
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/folders?path=Resources", {
+      method: "DELETE",
+    });
+    const res = await handleFolders(req, env, new URL(req.url));
+
+    expect(res.status).toBe(409);
   });
 
   it("deletes an empty folder", async () => {
@@ -129,11 +163,13 @@ describe("handleFolders", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const env = makeEnv();
-    const req = makeRequest("https://api.openbrain.dev/folders?path=Projects", { method: "DELETE" });
+    const req = makeRequest("https://api.openbrain.dev/folders?path=Projects/OpenBrain", {
+      method: "DELETE",
+    });
     const res = await handleFolders(req, env, new URL(req.url));
 
     expect(res.status).toBe(204);
     const calls = fetchMock.mock.calls as unknown[][];
-    expect(String(calls[2]?.[0] ?? "")).toContain("folders?path=eq.Projects");
+    expect(String(calls[2]?.[0] ?? "")).toContain("folders?path=eq.Projects%2FOpenBrain");
   });
 });

@@ -265,9 +265,7 @@ describe("handleFiles — POST /files/text", () => {
   it("rejects duplicate file paths", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(
-        async () => new Response(JSON.stringify([{ id: "existing-file" }]), { status: 200 }),
-      ),
+      vi.fn(async () => new Response(JSON.stringify([{ id: "existing-file" }]), { status: 200 })),
     );
     const env = makeEnv();
     const req = makeRequest("https://api.openbrain.dev/files/text", {

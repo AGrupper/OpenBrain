@@ -17,6 +17,7 @@ import {
   type Theme,
 } from "../views/SettingsModal";
 import type { VaultFile, VaultFolder } from "../../../../packages/shared/src/types";
+import { PARA_DEFAULT_ROOT } from "../../../../packages/shared/src/para";
 
 export default function App() {
   const [view, setView] = useState<ViewMode>("list");
@@ -66,7 +67,7 @@ export default function App() {
         filePaths,
         apiUrl: import.meta.env.VITE_API_URL ?? "",
         authToken: import.meta.env.VITE_AUTH_TOKEN ?? "",
-        remoteFolder: targetFolder === undefined ? "Inbox" : (targetFolder ?? ""),
+        remoteFolder: targetFolder ?? PARA_DEFAULT_ROOT,
       });
       setImportStatus(formatImportSummary(summary));
       loadFiles();

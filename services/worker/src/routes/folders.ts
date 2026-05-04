@@ -1,4 +1,5 @@
 import type { Env } from "../app";
+import { isParaRoot, makeParaRootFolders, PARA_ROOTS } from "@openbrain/shared";
 import type { VaultFile, VaultFolder } from "@openbrain/shared";
 
 export function normalizeFolderPath(input: string): string | null {
@@ -85,6 +86,20 @@ function db(env: Env) {
   };
 }
 
+function withParaRootFolders(rows: VaultFolder[]): VaultFolder[] {
+  const byPath = new Map<string, VaultFolder>();
+  for (const folder of makeParaRootFolders()) byPath.set(folder.path, folder);
+  for (const folder of rows) byPath.set(folder.path, folder);
+  return [...byPath.values()].sort((a, b) => {
+    const aRoot = PARA_ROOTS.indexOf(a.path as (typeof PARA_ROOTS)[number]);
+    const bRoot = PARA_ROOTS.indexOf(b.path as (typeof PARA_ROOTS)[number]);
+    if (aRoot >= 0 && bRoot >= 0) return aRoot - bRoot;
+    if (aRoot >= 0) return -1;
+    if (bRoot >= 0) return 1;
+    return a.path.localeCompare(b.path);
+  });
+}
+
 export async function ensureFolderRows(env: Env, rawFolderPath: string | null | undefined) {
   if (!rawFolderPath) return;
   const path = normalizeFolderPath(rawFolderPath);
@@ -107,18 +122,18 @@ export async function handleFolders(request: Request, env: Env, url: URL): Promi
 
   try {
     if (method === "GET") {
-      return Response.json(
-        await db(env).query("folders", {
-          select: "*",
-          order: "path.asc",
-        }),
-      );
+      const rows = (await db(env).query("folders", {
+        select: "*",
+        order: "path.asc",
+      })) as VaultFolder[];
+      return Response.json(withParaRootFolders(rows));
     }
 
     if (method === "POST") {
       const body = (await request.json()) as { path?: string };
       const path = body.path ? normalizeFolderPath(body.path) : null;
       if (!path) return new Response("path is required", { status: 400 });
+      if (isParaRoot(path)) return new Response("Folder already exists", { status: 409 });
 
       const [existingFolders, conflictingFiles] = await Promise.all([
         db(env).query("folders", { path: `eq.${path}`, select: "path", limit: "1" }) as Promise<
@@ -146,6 +161,9 @@ export async function handleFolders(request: Request, env: Env, url: URL): Promi
     if (method === "DELETE") {
       const path = normalizeFolderPath(url.searchParams.get("path") ?? "");
       if (!path) return new Response("path query param is required", { status: 400 });
+      if (isParaRoot(path)) {
+        return new Response("PARA root folders cannot be deleted", { status: 409 });
+      }
 
       const [children, files] = await Promise.all([
         db(env).query("folders", {

@@ -1,4 +1,5 @@
 import type { Env } from "../app";
+import { ensureParaFolderPath, PARA_ROOTS, paraRootDescription } from "@openbrain/shared";
 import {
   deterministicEmbedding,
   deterministicOrganization,
@@ -228,15 +229,19 @@ export async function askArchitectToOrganize(
 ): Promise<{ folder: string; tags: string[] }> {
   const provider = env.ARCHITECT_MODEL_PROVIDER ?? "openai";
   if (env.ARCHITECT_DETERMINISTIC === "true" || isDeterministicProvider(provider)) {
-    return deterministicOrganization(filePath);
+    const result = deterministicOrganization(filePath);
+    return { ...result, folder: ensureParaFolderPath(result.folder) };
   }
 
   const filename = filePath.split("/").pop() ?? filePath;
   const folderList = existingFolders.slice(0, 30).join(", ");
   const tagList = existingTags.slice(0, 50).join(", ");
+  const paraGuide = PARA_ROOTS.map((root) => `- ${root}: ${paraRootDescription(root)}`).join("\n");
 
   const prompt = `You are The Architect for a personal OpenBrain knowledge vault.
-Suggest a folder and tags for this file. Prefer existing folders and tags unless a new one is clearly justified.
+Suggest a PARA folder and tags for this file. Prefer existing folders and tags unless a new one is clearly justified.
+The folder must start with one of these PARA roots:
+${paraGuide}
 
 Filename: "${filename}"
 Full path: "${filePath}"
@@ -248,8 +253,9 @@ Existing tags (reuse if relevant, create new ones if needed):
 ${tagList || "No tags yet."}
 ${corrections}
 Respond with JSON only:
-{"folder": "suggested/folder/path", "tags": ["tag1", "tag2", "tag3"]}`;
+{"folder": "Projects|Areas|Resources|Archive/suggested/path", "tags": ["tag1", "tag2", "tag3"]}`;
 
   const raw = await askLLM(env, prompt, { jsonMode: true, maxTokens: 300 });
-  return JSON.parse(raw) as { folder: string; tags: string[] };
+  const result = JSON.parse(raw) as { folder: string; tags: string[] };
+  return { ...result, folder: ensureParaFolderPath(result.folder) };
 }

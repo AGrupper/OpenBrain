@@ -8,7 +8,9 @@ export function ImportBar({ error, importStatus, onAddFiles }: Props) {
   return (
     <div className="import-bar">
       <span style={styles.label}>Cloud vault ready.</span>
-      <span style={styles.help}>Add files manually; OpenBrain does not mirror a local folder.</span>
+      <span style={styles.help}>
+        Add files manually; OpenBrain files default to PARA Resources.
+      </span>
       {importStatus && <span style={styles.importStatus}>{importStatus}</span>}
       {error && <span style={styles.error}>{error}</span>}
       <button className="btn-primary" onClick={onAddFiles}>

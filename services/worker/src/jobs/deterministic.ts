@@ -1,3 +1,5 @@
+import { ensureParaFolderPath } from "@openbrain/shared";
+
 export const DETERMINISTIC_PROVIDER = "deterministic";
 
 const STOP_WORDS = new Set([
@@ -29,18 +31,27 @@ export function deterministicOrganization(filePath: string): { folder: string; t
   const tokens = pathTokens(filePath);
 
   if (tokens.has("unrelated")) {
-    return { folder: "smoke/unrelated", tags: ["architect-smoke", "unrelated"] };
+    return {
+      folder: ensureParaFolderPath("smoke/unrelated"),
+      tags: ["architect-smoke", "unrelated"],
+    };
   }
 
   if (tokens.has("related")) {
-    return { folder: "smoke/related", tags: ["architect-smoke", "related"] };
+    return {
+      folder: ensureParaFolderPath("smoke/related"),
+      tags: ["architect-smoke", "related"],
+    };
   }
 
   if (tokens.has("organization") || tokens.has("organize")) {
-    return { folder: "smoke/organized", tags: ["architect-smoke", "organization"] };
+    return {
+      folder: ensureParaFolderPath("smoke/organized"),
+      tags: ["architect-smoke", "organization"],
+    };
   }
 
-  return { folder: "smoke/inbox", tags: ["architect-smoke"] };
+  return { folder: ensureParaFolderPath("smoke/inbox"), tags: ["architect-smoke"] };
 }
 
 export function deterministicRelatedness(

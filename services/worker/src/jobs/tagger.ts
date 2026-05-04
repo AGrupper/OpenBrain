@@ -1,4 +1,5 @@
 import type { Env } from "../app";
+import { PARA_ROOTS, paraPlacementReason } from "@openbrain/shared";
 import type { VaultFile } from "@openbrain/shared";
 import { db } from "../lib/supabase";
 import { askArchitectToOrganize } from "../lib/providers";
@@ -59,7 +60,10 @@ async function loadVocabulary(env: Env): Promise<{
   })) as Pick<VaultFile, "folder" | "tags">[];
 
   const folders = [
-    ...new Set(allFiles.map((f) => f.folder).filter((x): x is string => Boolean(x))),
+    ...new Set([
+      ...PARA_ROOTS,
+      ...allFiles.map((f) => f.folder).filter((x): x is string => Boolean(x)),
+    ]),
   ];
   const tags = [...new Set(allFiles.flatMap((f) => f.tags ?? []))];
 
@@ -97,9 +101,8 @@ async function processOne(
     await db(env).insert("architect_suggestions", {
       file_id: file.id,
       type: "folder",
-      title: `Move ${title} to ${suggestion.folder}`,
-      reason:
-        "The Architect found this folder to be the best fit based on the file name, existing vault structure, and recent corrections.",
+      title: `Place ${title} in ${suggestion.folder}`,
+      reason: paraPlacementReason(suggestion.folder),
       payload: { folder: suggestion.folder },
       confidence: 0.7,
       status: "pending",

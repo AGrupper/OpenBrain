@@ -7,6 +7,7 @@ session so the next session can start from repo truth instead of chat history.
 
 - Branch: `master`
 - Remote: `origin/master`
+- Current implementation direction is tracked in `docs/project/MASTER_PLAN.md`.
 - Starting commit for this session: `c37ab89` (`Add OpenBrain session context handoff`)
 - Pushed implementation commit: `4cc6d30` (`Fix vault filename search and stale reader state`)
 - Pushed handoff commit before browser smoke confirmation: `a55f089`
@@ -42,10 +43,31 @@ session so the next session can start from repo truth instead of chat history.
 - The desktop List view is now an expandable persistent folder explorer.
 - The desktop app can create folders and blank Markdown notes directly in the app.
 - Manual file import now targets the selected folder in the explorer instead of always `Inbox`.
+- `docs/project/MASTER_PLAN.md` now defines the durable PARA Vault + Graph-First Architect Wiki
+  implementation roadmap.
+- PARA roots are first-class raw-vault roots: `Projects`, `Areas`, `Resources`, and `Archive`.
+- The folders API returns protected synthetic PARA roots even before matching database rows exist.
+- The desktop List view always shows the PARA roots, protects root deletion, and defaults new
+  folders, notes, and imports to `Resources` when no folder is selected.
+- The Architect tagger now asks for PARA folder placements, normalizes non-PARA suggestions under
+  `Resources`, and uses PARA-specific Review Inbox wording.
 
 ## Verified
 
-Last verified on 2026-05-01:
+Last verified on 2026-05-04 after the master-plan/PARA slice:
+
+- `npm.cmd test` passed with 89 tests when run outside the sandbox after sandboxed Vitest hit
+  `spawn EPERM`.
+- `npm.cmd run typecheck`
+- `npm.cmd run lint`
+- `npm.cmd run format:check`
+- `npm.cmd -w apps/desktop run build` passed outside the sandbox after sandboxed esbuild hit
+  `spawn EPERM`.
+- `cargo fmt --all -- --check`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test --all-features`
+
+Earlier verified on 2026-05-01:
 
 - `cargo clippy --manifest-path apps/desktop/src-tauri/Cargo.toml --all-targets -- -D warnings`
 - `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml`
@@ -94,17 +116,16 @@ Manual smoke verified:
 
 ## Next Targets
 
-Start with the working persistent explorer and Review Inbox loop:
+Continue from `docs/project/MASTER_PLAN.md`.
 
-1. Polish the folder explorer:
-   - Replace prompt-based folder/note creation with inline controls or a compact modal.
-   - Add clearer empty-folder and selected-folder states.
-2. Verify approved relationship surfaces:
+Immediate targets:
+
+1. Start Milestone 1:
    - Approve a deterministic smoke link suggestion.
    - Confirm approved links appear in the reader and Graph view.
-3. Verify vault-grounded Architect chat:
-   - Ask a question answerable from imported vault content and confirm source citations.
-   - Ask an unsupported question and confirm The Architect refuses unsupported vault claims.
+2. Continue Milestone 2:
+   - Replace prompt-based folder/note creation with inline controls or a compact modal.
+   - Keep "All files" available as a neutral view while PARA roots remain first-class.
 
 ## Guardrails
 

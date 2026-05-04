@@ -202,10 +202,9 @@ describe("handleArchitect - chat", () => {
       () => new Response(JSON.stringify([{ id: "session-1" }]), { status: 201 }),
       () => new Response(JSON.stringify([{ id: "message-user" }]), { status: 201 }),
       () =>
-        new Response(
-          JSON.stringify({ choices: [{ message: { content: "Combined answer." } }] }),
-          { status: 200 },
-        ),
+        new Response(JSON.stringify({ choices: [{ message: { content: "Combined answer." } }] }), {
+          status: 200,
+        }),
       () => new Response(JSON.stringify([{ id: "message-answer" }]), { status: 201 }),
       () => new Response(JSON.stringify([{ id: "source-a" }]), { status: 201 }),
       () => new Response(JSON.stringify([{ id: "source-b" }]), { status: 201 }),

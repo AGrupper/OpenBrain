@@ -323,16 +323,9 @@ async function retrieveVaultSources(
   return blendByRRF(ftsRows, vecRows, limit);
 }
 
-function blendByRRF(
-  fts: SearchRow[],
-  vec: SearchRow[],
-  limit: number,
-): ArchitectChatSource[] {
+function blendByRRF(fts: SearchRow[], vec: SearchRow[], limit: number): ArchitectChatSource[] {
   const k = 60;
-  const merged = new Map<
-    string,
-    { row: SearchRow; score: number; ftsSnippet?: string }
-  >();
+  const merged = new Map<string, { row: SearchRow; score: number; ftsSnippet?: string }>();
 
   fts.forEach((row, i) => {
     merged.set(row.id, {

@@ -1,6 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import type { Link, VaultFile, VaultFolder } from "../../../../packages/shared/src/types";
+import {
+  isParaRoot,
+  PARA_DEFAULT_ROOT,
+  PARA_ROOTS,
+  paraRootDescription,
+} from "../../../../packages/shared/src/para";
 import { api } from "../lib/api";
 
 interface Props {
@@ -28,7 +34,7 @@ export function ListView({
   onImportFiles,
 }: Props) {
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(["Inbox"]));
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set(PARA_ROOTS));
   const [links, setLinks] = useState<Link[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
   const tree = useMemo(() => buildExplorerTree(files, folders), [files, folders]);
@@ -82,7 +88,8 @@ export function ListView({
       window.alert("Folder name cannot be empty or contain slashes.");
       return;
     }
-    const path = joinPath(selectedFolder, cleanName);
+    const targetFolder = selectedFolder ?? PARA_DEFAULT_ROOT;
+    const path = joinPath(targetFolder, cleanName);
     if (folders.some((folder) => folder.path === path) || treeHasFolder(tree, path)) {
       window.alert(`Folder already exists: ${path}`);
       return;
@@ -106,7 +113,8 @@ export function ListView({
       window.alert("Note name cannot be empty or contain slashes.");
       return;
     }
-    const path = joinPath(selectedFolder, cleanName);
+    const targetFolder = selectedFolder ?? PARA_DEFAULT_ROOT;
+    const path = joinPath(targetFolder, cleanName);
     if (files.some((file) => file.path === path)) {
       window.alert(`File already exists: ${path}`);
       return;
@@ -114,9 +122,7 @@ export function ListView({
 
     try {
       const file = await api.files.createText(path, "");
-      setExpanded((current) =>
-        selectedFolder ? new Set([...current, ...folderAncestors(selectedFolder)]) : current,
-      );
+      setExpanded((current) => new Set([...current, ...folderAncestors(targetFolder)]));
       onSelect(file);
       onChange();
     } catch (e) {
@@ -147,10 +153,13 @@ export function ListView({
           <button className="btn-action" onClick={createNote}>
             New note
           </button>
-          <button className="btn-action" onClick={() => onImportFiles(selectedFolder)}>
+          <button
+            className="btn-action"
+            onClick={() => onImportFiles(selectedFolder ?? PARA_DEFAULT_ROOT)}
+          >
             Add files
           </button>
-          {selectedFolder && (
+          {selectedFolder && !isParaRoot(selectedFolder) && (
             <button className="btn-action btn-action-danger" onClick={deleteFolder}>
               Delete folder
             </button>
@@ -215,7 +224,12 @@ export function ListView({
                 ))}
               </div>
             )}
-            <FileActions file={selectedFile} files={files} onChange={onChange} onSelect={onSelect} />
+            <FileActions
+              file={selectedFile}
+              files={files}
+              onChange={onChange}
+              onSelect={onSelect}
+            />
             {preview && (
               <div className="markdown-body" style={styles.markdown}>
                 <ReactMarkdown>{preview}</ReactMarkdown>
@@ -243,7 +257,7 @@ export function ListView({
           </>
         ) : (
           <div style={styles.placeholder}>
-            {selectedFolder ? `Selected folder: ${selectedFolder}` : "Select a file to preview"}
+            {selectedFolder ? folderPlaceholder(selectedFolder) : "Select a file to preview"}
           </div>
         )}
       </div>
@@ -296,7 +310,9 @@ function FolderTreeRow({
         >
           {hasChildren ? (isExpanded ? "v" : ">") : ""}
         </button>
-        <span style={styles.folderIcon}>DIR</span>
+        <span style={styles.folderIcon}>
+          {folder.path && isParaRoot(folder.path) ? "PARA" : "DIR"}
+        </span>
         <span style={styles.folderName}>{folder.name}</span>
       </div>
       {isExpanded &&
@@ -467,6 +483,7 @@ function buildExplorerTree(files: VaultFile[], folders: VaultFolder[]): FolderNo
     return node;
   };
 
+  for (const paraRoot of PARA_ROOTS) ensureFolder(paraRoot);
   for (const folder of folders) ensureFolder(normalizeRelativePath(folder.path));
   for (const file of files) {
     const folder = effectiveFolder(file);
@@ -475,12 +492,28 @@ function buildExplorerTree(files: VaultFile[], folders: VaultFolder[]): FolderNo
   }
 
   const sortNode = (node: FolderNode) => {
-    node.folders.sort((a, b) => a.name.localeCompare(b.name));
+    node.folders.sort(compareFolders);
     node.files.sort((a, b) => fileName(a).localeCompare(fileName(b)));
     node.folders.forEach(sortNode);
   };
   sortNode(root);
   return root;
+}
+
+function compareFolders(a: FolderNode, b: FolderNode): number {
+  const aPara = a.path && PARA_ROOTS.indexOf(a.path as (typeof PARA_ROOTS)[number]);
+  const bPara = b.path && PARA_ROOTS.indexOf(b.path as (typeof PARA_ROOTS)[number]);
+  if (typeof aPara === "number" && aPara >= 0 && typeof bPara === "number" && bPara >= 0) {
+    return aPara - bPara;
+  }
+  if (typeof aPara === "number" && aPara >= 0) return -1;
+  if (typeof bPara === "number" && bPara >= 0) return 1;
+  return a.name.localeCompare(b.name);
+}
+
+function folderPlaceholder(path: string): string {
+  if (isParaRoot(path)) return `${path}: ${paraRootDescription(path)}`;
+  return `Selected folder: ${path}`;
 }
 
 function treeHasFolder(node: FolderNode, path: string): boolean {
@@ -524,7 +557,10 @@ function normalizeRelativePath(input: string): string {
 function sanitizeChildName(input: string): string {
   const trimmed = input.trim();
   if (!trimmed || trimmed.includes("/") || trimmed.includes("\\")) return "";
-  return trimmed.replace(/[<>:"|?*]/g, "-").replace(/[\u0000-\u001f]/g, "-").trim();
+  return trimmed
+    .replace(/[<>:"|?*]/g, "-")
+    .replace(/[\u0000-\u001f]/g, "-")
+    .trim();
 }
 
 function ensureMarkdownName(name: string): string {

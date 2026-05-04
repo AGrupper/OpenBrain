@@ -4,6 +4,12 @@
  */
 import { fileURLToPath } from "node:url";
 import type { VaultFile } from "../../../../packages/shared/src/types";
+import {
+  ensureParaFolderPath,
+  PARA_ROOTS,
+  paraPlacementReason,
+  paraRootDescription,
+} from "../../../../packages/shared/src/para";
 import { deterministicOrganization, isDeterministicProvider } from "./deterministic";
 
 const API = process.env.OPENBRAIN_API_URL!;
@@ -67,15 +73,19 @@ export async function askArchitectToOrganize(
   const provider = process.env.ARCHITECT_MODEL_PROVIDER ?? "openai";
 
   if (isDeterministicProvider(provider)) {
-    return deterministicOrganization(filePath);
+    const result = deterministicOrganization(filePath);
+    return { ...result, folder: ensureParaFolderPath(result.folder) };
   }
 
   const filename = filePath.split("/").pop() ?? filePath;
   const folderList = existingFolders.slice(0, 30).join(", ");
   const tagList = existingTags.slice(0, 50).join(", ");
+  const paraGuide = PARA_ROOTS.map((root) => `- ${root}: ${paraRootDescription(root)}`).join("\n");
 
   const prompt = `You are The Architect for a personal OpenBrain knowledge vault.
-Suggest a folder and tags for this file. Prefer existing folders and tags unless a new one is clearly justified.
+Suggest a PARA folder and tags for this file. Prefer existing folders and tags unless a new one is clearly justified.
+The folder must start with one of these PARA roots:
+${paraGuide}
 
 Filename: "${filename}"
 Full path: "${filePath}"
@@ -87,7 +97,7 @@ Existing tags (reuse if relevant, create new ones if needed):
 ${tagList || "No tags yet."}
 ${corrections}
 Respond with JSON only:
-{"folder": "suggested/folder/path", "tags": ["tag1", "tag2", "tag3"]}`;
+{"folder": "Projects|Areas|Resources|Archive/suggested/path", "tags": ["tag1", "tag2", "tag3"]}`;
 
   if (provider === "anthropic") {
     const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -104,7 +114,8 @@ Respond with JSON only:
       }),
     });
     const data = (await res.json()) as { content: { text: string }[] };
-    return JSON.parse(data.content[0].text);
+    const result = JSON.parse(data.content[0].text) as { folder: string; tags: string[] };
+    return { ...result, folder: ensureParaFolderPath(result.folder) };
   }
 
   if (provider === "openai") {
@@ -121,7 +132,11 @@ Respond with JSON only:
       }),
     });
     const data = (await res.json()) as { choices: { message: { content: string } }[] };
-    return JSON.parse(data.choices[0].message.content);
+    const result = JSON.parse(data.choices[0].message.content) as {
+      folder: string;
+      tags: string[];
+    };
+    return { ...result, folder: ensureParaFolderPath(result.folder) };
   }
 
   if (provider === "ollama") {
@@ -136,7 +151,11 @@ Respond with JSON only:
       }),
     });
     const data = (await res.json()) as { choices: { message: { content: string } }[] };
-    return JSON.parse(data.choices[0].message.content);
+    const result = JSON.parse(data.choices[0].message.content) as {
+      folder: string;
+      tags: string[];
+    };
+    return { ...result, folder: ensureParaFolderPath(result.folder) };
   }
 
   throw new Error(`Unsupported ARCHITECT_MODEL_PROVIDER: ${provider}`);
@@ -153,7 +172,9 @@ export async function main() {
 
   // Gather existing folders + tags for context
   const allFiles: VaultFile[] = await apiFetch("/files?select=folder,tags&limit=500");
-  const existingFolders = [...new Set(allFiles.map((f) => f.folder).filter(Boolean) as string[])];
+  const existingFolders = [
+    ...new Set([...PARA_ROOTS, ...(allFiles.map((f) => f.folder).filter(Boolean) as string[])]),
+  ];
   const existingTags = [...new Set(allFiles.flatMap((f) => f.tags ?? []))];
   const corrections = await getRecentCorrections();
 
@@ -175,9 +196,8 @@ export async function main() {
         body: JSON.stringify({
           file_id: file.id,
           type: "folder",
-          title: `Move ${title} to ${suggestion.folder}`,
-          reason:
-            "The Architect found this folder to be the best fit based on the file name, existing vault structure, and recent corrections.",
+          title: `Place ${title} in ${suggestion.folder}`,
+          reason: paraPlacementReason(suggestion.folder),
           payload: { folder: suggestion.folder },
           confidence: 0.7,
         }),
