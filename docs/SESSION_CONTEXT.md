@@ -18,6 +18,9 @@ session so the next session can start from repo truth instead of chat history.
   Worker, tightened Review Inbox reload behavior after decisions, and added the first Markdown
   edit/save workspace slice.
 - The user confirmed the Markdown edit/save/search smoke works in the running app.
+- Overnight follow-up committed the Markdown workspace checkpoint locally as `f907a22`
+  (`Complete Markdown note workspace loop`) and added the first safe Graph-First Architect Wiki
+  slice without migrations: graph node details over existing raw files and approved links.
 
 ## Completed
 
@@ -78,10 +81,17 @@ session so the next session can start from repo truth instead of chat history.
 - The reader now has `Edit`, `Save`, and `Cancel` controls for Markdown files, save-error display,
   and a discard prompt for in-list navigation while a note has unsaved changes.
 - Milestone 3 is complete after manual smoke confirmed Markdown create/edit/save/search behavior.
+- Milestone 1 is complete: approved links are now inspectable in both reader-facing connected-file
+  context and the Graph view.
+- Graph links now use higher-contrast rendering, and clicking a graph node opens a detail panel
+  with path, PARA folder, tags, summary when present, connected files, reasons, confidence, and an
+  explicit `Open in reader` action.
+- The shared `VaultFile` type now includes the existing optional `summary` field so the desktop can
+  display summaries already returned by the Worker.
 
 ## Verified
 
-Last verified on 2026-05-04 after the Markdown edit/save manual smoke:
+Last verified on 2026-05-04 after the graph node detail panel slice:
 
 - `npm.cmd test` passed with 92 tests when run outside the sandbox after sandboxed Vitest hit
   `spawn EPERM`.
@@ -90,6 +100,10 @@ Last verified on 2026-05-04 after the Markdown edit/save manual smoke:
 - `npm.cmd run format:check`
 - `npm.cmd -w apps/desktop run build` passed outside the sandbox after sandboxed esbuild hit
   `spawn EPERM`.
+- Manual browser smoke was not rerun for the graph detail panel in this checkpoint.
+- Earlier on 2026-05-04 after the Markdown edit/save manual smoke:
+- The user confirmed Markdown edit, save, reload/reselect, and search smoke worked in the running
+  app.
 - Earlier on 2026-05-04 after the Architect smoke/env fix:
 - `npm.cmd -w services/architect-agent run smoke:run` passed against the local Worker after loading
   the token from `services/worker/.dev.vars` and overriding `OPENBRAIN_API_URL` to
@@ -157,8 +171,6 @@ Manual smoke verified:
 - Creating a folder and blank note directly in the app works and persists.
 - Local screenshots on 2026-05-04 confirmed `Resources/SmokeManual/manual-smoke.md` creation in the
   running app.
-- The user confirmed Markdown edit, save, reload/reselect, and search smoke worked in the running
-  app.
 
 ## Local Setup Notes
 
@@ -179,14 +191,14 @@ Continue from `docs/MASTER_PLAN.md`.
 
 Immediate targets:
 
-1. Close out Milestone 1/2 status:
-   - Confirm whether the already-approved smoke links are acceptable despite current low-contrast
-     Graph edges, or defer that UI polish to the later UI pass as planned.
-   - Delete disposable smoke notes/folders if keeping the vault clean.
-2. Continue from `docs/MASTER_PLAN.md`:
-   - Next functional milestone is Graph-First Architect Wiki.
-   - Start with a small buildable design slice for generated wiki pages and graph node detail,
-     without touching real auth, migrations, deployment config, or UI polish.
+1. Finish Milestone 2 confidence:
+   - Manually smoke the Review Inbox loop in the running app if fresh pending deterministic PARA
+     suggestions are available.
+   - Do not delete disposable smoke notes/folders unless the user explicitly approves cleanup.
+2. Continue Graph-First Architect Wiki:
+   - The next meaningful step is schema-backed generated wiki pages/nodes, citations, backlinks,
+     and update history.
+   - Stop for explicit approval before adding the required Supabase migration.
 
 ## Guardrails
 

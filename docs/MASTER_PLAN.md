@@ -50,10 +50,10 @@ The graph wiki answers: "What does OpenBrain understand?"
 | Milestone                             | Status      | Acceptance                                                                                                        |
 | ------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------- |
 | 0. Baseline And Master Plan           | Complete    | Master plan exists, session context is current, formatting gate is fixed, and baseline checks pass.               |
-| 1. Prove Existing Vault Loop          | In progress | Import -> process -> review -> approve -> reader/graph works locally.                                             |
+| 1. Prove Existing Vault Loop          | Complete    | Import -> process -> review -> approve -> reader/graph works locally.                                             |
 | 2. PARA Raw Vault                     | In progress | Files and notes can be browsed by PARA, and Architect suggestions can place items into PARA without silent moves. |
 | 3. Markdown Note Workspace            | Complete    | Markdown notes can be created, edited, saved, searched, renamed, and deleted.                                     |
-| 4. Graph-First Architect Wiki         | Pending     | Imported sources can produce visible knowledge nodes and readable generated pages.                                |
+| 4. Graph-First Architect Wiki         | In progress | Imported sources can produce visible knowledge nodes and readable generated pages.                                |
 | 5. Broad Ingestion: Files And URLs    | Pending     | Supported files and URLs become searchable vault items with clear processing state.                               |
 | 6. Embeddings And Media Understanding | Pending     | Search/chat can retrieve from raw files, media chunks, transcripts, and wiki pages.                               |
 | 7. Architect Recommendations          | Pending     | The Architect proactively recommends while user-owned material remains controlled.                                |
@@ -86,6 +86,8 @@ The graph wiki answers: "What does OpenBrain understand?"
 - Confirm approved links appear in reader and graph.
 - Done: local screenshots confirmed the reader opens vault files, Graph renders smoke vault nodes,
   and inline PARA folder/note creation works.
+- Done: Graph links now render with enough contrast to inspect approved relationships, and clicking
+  a graph node opens an inspectable detail panel with connected files and an explicit reader action.
 - Fix only bugs found in this loop.
 
 ### 2. PARA Raw Vault
@@ -110,6 +112,10 @@ The graph wiki answers: "What does OpenBrain understand?"
 
 ### 4. Graph-First Architect Wiki
 
+- Started safely without schema changes: raw source nodes now have a graph detail panel that shows
+  path, PARA folder, tags, summary when present, approved connected files, reasons, and confidence.
+- Next schema-backed step requires explicit migration approval before storing generated wiki pages,
+  wiki node types, citations, backlinks, or update history.
 - Add generated wiki node types: `Source`, `Topic`, `Person`, `Project`, `Area`, `Resource`,
   `Claim`, `Question`, `Synthesis`, and `Contradiction`.
 - Add edge types: `derived_from`, `supports`, `contradicts`, `mentions`, `summarizes`,
