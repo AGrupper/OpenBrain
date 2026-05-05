@@ -4,6 +4,7 @@ import {
   deterministicEmbedding,
   deterministicOrganization,
   deterministicRelatedness,
+  deterministicWikiDraft,
   isDeterministicProvider,
 } from "../jobs/deterministic";
 
@@ -105,6 +106,19 @@ export interface AskLLMOptions {
   jsonMode?: boolean;
   maxTokens?: number;
   temperature?: number;
+}
+
+export interface WikiDraftChunkInput {
+  chunk_index: number;
+  content: string;
+}
+
+export interface WikiDraftResult {
+  title: string;
+  summary: string;
+  topics: Array<{ title: string; summary: string; chunk_indexes: number[] }>;
+  claims: Array<{ title: string; content: string; chunk_indexes: number[] }>;
+  synthesis: { title: string; content: string; chunk_indexes: number[] };
 }
 
 export async function askLLM(env: Env, prompt: string, opts: AskLLMOptions = {}): Promise<string> {
@@ -258,4 +272,45 @@ Respond with JSON only:
   const raw = await askLLM(env, prompt, { jsonMode: true, maxTokens: 300 });
   const result = JSON.parse(raw) as { folder: string; tags: string[] };
   return { ...result, folder: ensureParaFolderPath(result.folder) };
+}
+
+export async function askArchitectForWikiDraft(
+  env: Env,
+  filePath: string,
+  chunks: WikiDraftChunkInput[],
+): Promise<WikiDraftResult> {
+  const provider = env.ARCHITECT_MODEL_PROVIDER ?? "openai";
+  if (env.ARCHITECT_DETERMINISTIC === "true" || isDeterministicProvider(provider)) {
+    return deterministicWikiDraft(filePath, chunks);
+  }
+
+  const chunkContext = chunks
+    .slice(0, 12)
+    .map((chunk) => `[${chunk.chunk_index}]\n${chunk.content.slice(0, 1200)}`)
+    .join("\n\n");
+
+  const prompt = `You are The Architect for OpenBrain's draft-visible knowledge wiki.
+Create a concise, vault-grounded draft wiki extraction from the source chunks below.
+
+Rules:
+- Use only the provided chunks.
+- Every topic, claim, and synthesis must include one or more chunk_indexes from the provided chunk numbers.
+- Omit unsupported claims.
+- Keep titles short and human-readable.
+- Return JSON only with this exact shape:
+{
+  "title": "source title",
+  "summary": "one-sentence source summary",
+  "topics": [{"title": "topic", "summary": "why this topic matters here", "chunk_indexes": [0]}],
+  "claims": [{"title": "claim title", "content": "specific supported claim", "chunk_indexes": [0]}],
+  "synthesis": {"title": "synthesis title", "content": "markdown synthesis", "chunk_indexes": [0]}
+}
+
+File path: ${filePath}
+
+Chunks:
+${chunkContext}`;
+
+  const raw = await askLLM(env, prompt, { jsonMode: true, maxTokens: 1200, temperature: 0.1 });
+  return JSON.parse(raw) as WikiDraftResult;
 }

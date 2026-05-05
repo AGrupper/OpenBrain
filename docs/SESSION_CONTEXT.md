@@ -14,6 +14,13 @@ session so the next session can start from repo truth instead of chat history.
 - Current implementation direction is tracked in `docs/MASTER_PLAN.md`.
 - The 2026-05-05 follow-up suppresses no-op Architect folder/tag review suggestions and adds
   regression coverage.
+- The later 2026-05-05 implementation adds the approved draft-visible Architect Wiki foundation:
+  migration `006_wiki.sql`, chunk citations, wiki nodes/pages/revisions/edges, Worker `/wiki`
+  routes, automatic wiki draft generation, and Graph UI support for generated wiki pages.
+- Manual draft-visible wiki smoke found one local regeneration gap: Markdown saves correctly set
+  `files.needs_wiki=true`, but the local `ctx.waitUntil` rebuild was not completing reliably.
+  Desktop Markdown saves now call `PATCH /files/:id?run_wiki=true`, and the Worker awaits just the
+  wiki rebuild for that explicit save path while keeping linker/tagger work in the background.
 - Milestone 2 is now complete based on the user's 2026-05-05 manual screenshots: approving the
   fresh deterministic PARA folder and tag suggestions placed `openbrain-smoke-related-fresh.md`
   under `Resources/smoke/related` with `architect-smoke` and `related` tags visible in the reader.
@@ -105,10 +112,42 @@ session so the next session can start from repo truth instead of chat history.
   files do not keep re-entering the suggestion loop.
 - Milestone 2 is complete: the running app manually confirmed a fresh deterministic Review Inbox
   folder placement and tag suggestion shape the PARA vault only after approval.
+- Migration `006_wiki.sql` defines the draft-visible Architect Wiki storage layer:
+  `source_chunks`, `wiki_nodes`, `wiki_pages`, `wiki_revisions`, `wiki_edges`, `wiki_citations`,
+  and `files.needs_wiki`.
+- Worker `/wiki/graph` returns visible draft/published wiki nodes and edges.
+- Worker `/wiki/nodes/:id` returns node detail, current page, latest revision chunk citations,
+  backlinks, outgoing edges, and revision history.
+- The Worker wiki builder splits text sources into overlapping chunks, generates deterministic or
+  provider-backed draft wiki nodes, stores chunk citations, archives stale source-specific draft
+  nodes/edges on regeneration, and only patches raw files by clearing `needs_wiki`.
+- File upload, Markdown note creation, Markdown saves, real path changes, and scheduled Worker runs
+  now queue or run wiki generation.
+- Desktop Markdown saves now request an immediate wiki rebuild so local edits produce fresh wiki
+  revisions without waiting for the scheduled Worker sweep.
+- The desktop Graph now merges raw file nodes/approved links with draft wiki nodes/wiki edges, shows
+  draft badges by default, and opens generated wiki pages with chunk citations, backlinks, outgoing
+  edges, and history.
 
 ## Verified
 
-Last verified on 2026-05-05 after the no-op Architect suggestion fix:
+Last verified on 2026-05-05 after the draft-visible wiki implementation:
+
+- `npm.cmd run typecheck`
+- `npm.cmd run lint`
+- `npm.cmd run format:check`
+- `npm.cmd -w apps/desktop run build` passed outside the sandbox after the known Vite/esbuild
+  `spawn EPERM`; it emitted the existing large chunk warning.
+- `npm.cmd test` passed outside the sandbox after the known Vitest `spawn EPERM` with 101 tests.
+- Focused wiki regression tests passed outside the sandbox after the known Vitest `spawn EPERM`:
+  `npm.cmd test -- services/worker/src/jobs/wiki.test.ts services/worker/src/routes/wiki.test.ts services/worker/src/routes/files.test.ts`
+  with 48 tests.
+- Manual smoke confirmed draft wiki nodes appear in Graph, wiki node details show draft status,
+  generated Markdown, chunk citations, backlinks/outgoing edges, and revision history. A direct
+  builder run regenerated `Resources/openbrain-smoke-related-fresh.md` and cleared
+  `needs_wiki=false` after the local save-trigger gap was diagnosed.
+
+Earlier verified on 2026-05-05 after the no-op Architect suggestion fix:
 
 - Targeted tagger regression tests passed with 13 focused tests:
   `npm.cmd test -- services/architect-agent/tests/tagger.test.ts services/worker/src/jobs/tagger.test.ts`.
@@ -220,10 +259,12 @@ Continue from `docs/MASTER_PLAN.md`.
 
 Immediate targets:
 
-1. Continue Graph-First Architect Wiki:
-   - The next meaningful step is schema-backed generated wiki pages/nodes, citations, backlinks,
-     and update history.
-   - Stop for explicit approval before adding the required Supabase migration.
+1. Finish Graph-First Architect Wiki smoke:
+   - Apply `infra/supabase/migrations/006_wiki.sql` manually in Supabase SQL Editor.
+   - Run `notify pgrst, 'reload schema';` or restart the local Worker so PostgREST sees the new
+     tables/columns.
+   - Restart Worker and desktop, create or edit a Markdown note, and verify draft wiki nodes appear
+     in Graph with page content, chunk citations, backlinks, outgoing edges, and history.
 2. Review or clean remaining pending suggestions:
    - Reject the stale no-op `manual-smoke.md -> Resources/SmokeManual` folder card if it remains
      visible.

@@ -4,8 +4,9 @@ import { handleSearch } from "../routes/search";
 import { handleCorrections } from "../routes/corrections";
 import { handleArchitect } from "../routes/architect";
 import { handleFolders } from "../routes/folders";
+import { handleWiki } from "../routes/wiki";
 import { handleTelegram } from "../telegram/webhook";
-import { runLinker, runTagger } from "../jobs";
+import { runLinker, runTagger, runWikiBuilder } from "../jobs";
 
 export interface Env {
   VAULT_BUCKET: R2Bucket;
@@ -81,6 +82,7 @@ export default {
     else if (path.startsWith("/search")) response = await handleSearch(request, env, url);
     else if (path.startsWith("/corrections")) response = await handleCorrections(request, env, url);
     else if (path.startsWith("/architect")) response = await handleArchitect(request, env, url);
+    else if (path.startsWith("/wiki")) response = await handleWiki(request, env, url);
     else response = new Response("Not found", { status: 404 });
 
     return withCors(response);
@@ -89,5 +91,8 @@ export default {
   async scheduled(_event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(runLinker(env).catch((err) => console.error("[scheduled] linker failed:", err)));
     ctx.waitUntil(runTagger(env).catch((err) => console.error("[scheduled] tagger failed:", err)));
+    ctx.waitUntil(
+      runWikiBuilder(env).catch((err) => console.error("[scheduled] wiki failed:", err)),
+    );
   },
 };

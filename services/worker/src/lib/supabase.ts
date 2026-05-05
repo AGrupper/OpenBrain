@@ -2,8 +2,8 @@ import type { Env } from "../app";
 
 export interface Db {
   query(table: string, params?: Record<string, string>): Promise<unknown>;
-  insert(table: string, row: Record<string, unknown>): Promise<unknown>;
-  upsert(table: string, row: Record<string, unknown>): Promise<unknown>;
+  insert(table: string, row: Record<string, unknown> | Record<string, unknown>[]): Promise<unknown>;
+  upsert(table: string, row: Record<string, unknown> | Record<string, unknown>[]): Promise<unknown>;
   patch(table: string, id: string, patch: Record<string, unknown>): Promise<unknown>;
   rpc(fn: string, args: Record<string, unknown>): Promise<unknown>;
 }

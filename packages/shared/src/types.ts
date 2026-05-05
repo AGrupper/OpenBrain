@@ -2,6 +2,27 @@ export type FileStatus = "stored" | "pending_upload" | "processing" | "error";
 export type ArchitectJobStatus = "pending" | "processing" | "suggestions_created" | "failed";
 export type ArchitectSuggestionStatus = "pending" | "approved" | "rejected";
 export type ArchitectSuggestionType = "summary" | "tags" | "folder" | "link" | "action" | "cleanup";
+export type WikiNodeStatus = "draft" | "published" | "archived";
+export type WikiNodeKind =
+  | "source"
+  | "topic"
+  | "person"
+  | "project"
+  | "area"
+  | "resource"
+  | "claim"
+  | "question"
+  | "synthesis"
+  | "contradiction";
+export type WikiEdgeType =
+  | "derived_from"
+  | "supports"
+  | "contradicts"
+  | "mentions"
+  | "summarizes"
+  | "related_to"
+  | "part_of"
+  | "answers";
 
 export interface VaultFile {
   id: string;
@@ -15,6 +36,7 @@ export interface VaultFile {
   folder?: string;
   summary?: string | null;
   text_content?: string | null;
+  needs_wiki?: boolean;
 }
 
 export interface VaultFolder {
@@ -91,6 +113,86 @@ export interface ArchitectChatResponse {
   session_id: string;
   answer: string;
   sources: ArchitectChatSource[];
+}
+
+export interface SourceChunk {
+  id: string;
+  file_id: string;
+  source_sha256: string;
+  chunk_index: number;
+  content: string;
+  char_start: number;
+  char_end: number;
+  created_at: string;
+}
+
+export interface WikiNode {
+  id: string;
+  kind: WikiNodeKind;
+  title: string;
+  slug: string;
+  status: WikiNodeStatus;
+  summary?: string | null;
+  source_file_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WikiPage {
+  id: string;
+  node_id: string;
+  title: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WikiRevision {
+  id: string;
+  page_id: string;
+  source_file_id?: string | null;
+  revision_number: number;
+  title: string;
+  content: string;
+  reason: string;
+  created_at: string;
+}
+
+export interface WikiEdge {
+  id: string;
+  source_node_id: string;
+  target_node_id: string;
+  type: WikiEdgeType;
+  status: WikiNodeStatus;
+  confidence?: number | null;
+  reason?: string | null;
+  source_file_id?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WikiCitation {
+  id: string;
+  node_id?: string | null;
+  revision_id?: string | null;
+  chunk_id: string;
+  quote?: string | null;
+  created_at: string;
+  chunk?: SourceChunk;
+}
+
+export interface WikiGraphResponse {
+  nodes: WikiNode[];
+  edges: WikiEdge[];
+}
+
+export interface WikiNodeDetailResponse {
+  node: WikiNode;
+  page: WikiPage | null;
+  citations: WikiCitation[];
+  backlinks: WikiEdge[];
+  outgoing: WikiEdge[];
+  revisions: WikiRevision[];
 }
 
 export interface SearchResult {

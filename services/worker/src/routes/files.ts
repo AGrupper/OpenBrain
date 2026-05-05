@@ -2,7 +2,7 @@ import { unzipSync } from "fflate";
 import type { Env } from "../app";
 import type { VaultFile } from "@openbrain/shared";
 import { ensureFolderRows } from "./folders";
-import { runLinkerForFile, runTaggerForFile } from "../jobs";
+import { runLinkerForFile, runTaggerForFile, runWikiBuilderForFile } from "../jobs";
 
 interface UploadMetadata {
   path: string;
@@ -25,11 +25,17 @@ export const FILES_SELECT_WHITELIST = new Set([
   "needs_embedding",
   "needs_linking",
   "needs_tagging",
+  "needs_wiki",
   "text_content",
   "summary",
 ]);
 const FILES_MAX_LIMIT = 500;
-const FILES_BOOL_FILTERS = ["needs_linking", "needs_tagging", "needs_embedding"] as const;
+const FILES_BOOL_FILTERS = [
+  "needs_linking",
+  "needs_tagging",
+  "needs_embedding",
+  "needs_wiki",
+] as const;
 
 export function parseFilesQuery(searchParams: URLSearchParams): {
   params: Record<string, string>;
@@ -326,6 +332,7 @@ export async function handleFiles(
         needs_embedding: true,
         needs_linking: true,
         needs_tagging: true,
+        needs_wiki: true,
       })) as VaultFile[];
       if (rows[0]?.id) {
         await db(env).upsert("architect_jobs", {
@@ -370,6 +377,7 @@ export async function handleFiles(
         needs_embedding: true,
         needs_linking: true,
         needs_tagging: true,
+        needs_wiki: true,
       })) as VaultFile[];
       if (rows[0]?.id) {
         await db(env).upsert("architect_jobs", {
@@ -414,6 +422,7 @@ export async function handleFiles(
 
       const hasPathChange = typeof body.path === "string";
       const hasTextChange = typeof body.text_content === "string";
+      let pathChanged = false;
 
       if (hasPathChange || hasTextChange) {
         const current = (await db(env).query("files", {
@@ -424,6 +433,7 @@ export async function handleFiles(
         const oldPath = current[0].path;
         const newPath = hasPathChange ? normalizeFilePath(body.path as string) : oldPath;
         if (!newPath) return new Response("path is invalid", { status: 400 });
+        pathChanged = oldPath !== newPath;
         if (hasPathChange) {
           (body as Record<string, unknown>).path = newPath;
           (body as Record<string, unknown>).folder = folderFromPath(newPath);
@@ -435,7 +445,7 @@ export async function handleFiles(
           });
         }
 
-        if (oldPath !== newPath) {
+        if (pathChanged) {
           await ensureFolderRows(env, folderFromPath(newPath));
         }
 
@@ -447,7 +457,7 @@ export async function handleFiles(
             httpMetadata: { contentType: "text/markdown" },
             sha256,
           });
-          if (oldPath !== newPath) await env.VAULT_BUCKET.delete(oldPath);
+          if (pathChanged) await env.VAULT_BUCKET.delete(oldPath);
           Object.assign(body, {
             path: newPath,
             folder: folderFromPath(newPath),
@@ -458,8 +468,9 @@ export async function handleFiles(
             needs_embedding: true,
             needs_linking: true,
             needs_tagging: true,
+            needs_wiki: true,
           });
-        } else if (oldPath !== newPath) {
+        } else if (pathChanged) {
           const obj = await env.VAULT_BUCKET.get(oldPath);
           if (obj) {
             await env.VAULT_BUCKET.put(newPath, obj.body, {
@@ -467,6 +478,7 @@ export async function handleFiles(
             });
             await env.VAULT_BUCKET.delete(oldPath);
           }
+          Object.assign(body, { needs_wiki: true });
         }
       }
       const rows = await db(env).patch("files", fileId, {
@@ -474,13 +486,17 @@ export async function handleFiles(
         updated_at: new Date().toISOString(),
       });
 
-      if (hasTextChange) {
+      if (hasTextChange || pathChanged) {
         await db(env).upsert("architect_jobs", {
           file_id: fileId,
           status: "pending",
           updated_at: new Date().toISOString(),
         });
-        kickArchitect(env, fileId, ctx);
+        const runWikiNow = url.searchParams.get("run_wiki") === "true";
+        if (runWikiNow) {
+          await runWikiBuilderForFile(env, fileId);
+        }
+        kickArchitect(env, fileId, ctx, { skipWiki: runWikiNow });
       }
 
       return Response.json(rows);
@@ -517,7 +533,12 @@ export async function handleFiles(
   }
 }
 
-function kickArchitect(env: Env, fileId: string, ctx?: ExecutionContext): void {
+function kickArchitect(
+  env: Env,
+  fileId: string,
+  ctx?: ExecutionContext,
+  opts: { skipWiki?: boolean } = {},
+): void {
   if (!ctx) return;
   ctx.waitUntil(
     runLinkerForFile(env, fileId).catch((err) =>
@@ -527,6 +548,12 @@ function kickArchitect(env: Env, fileId: string, ctx?: ExecutionContext): void {
   ctx.waitUntil(
     runTaggerForFile(env, fileId).catch((err) =>
       console.error(`[files] tagger failed for ${fileId}:`, err),
+    ),
+  );
+  if (opts.skipWiki) return;
+  ctx.waitUntil(
+    runWikiBuilderForFile(env, fileId).catch((err) =>
+      console.error(`[files] wiki failed for ${fileId}:`, err),
     ),
   );
 }

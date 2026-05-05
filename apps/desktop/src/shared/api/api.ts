@@ -6,6 +6,8 @@ import type {
   SearchResult,
   VaultFile,
   VaultFolder,
+  WikiGraphResponse,
+  WikiNodeDetailResponse,
 } from "@openbrain/shared";
 
 const BASE = import.meta.env.VITE_API_URL as string;
@@ -52,7 +54,7 @@ export const api = {
     linksForFile: (id: string) => get<Link[]>(`/links/for-file/${id}`),
     createText: (path: string, content = "") => post<VaultFile>("/files/text", { path, content }),
     saveText: (id: string, content: string) =>
-      patch<VaultFile | VaultFile[]>(`/files/${id}`, { text_content: content }),
+      patch<VaultFile | VaultFile[]>(`/files/${id}?run_wiki=true`, { text_content: content }),
     patch: (id: string, body: Partial<VaultFile>) => patch<VaultFile>(`/files/${id}`, body),
     rename: (id: string, newPath: string) => patch<VaultFile>(`/files/${id}`, { path: newPath }),
     delete: (id: string) => del(`/files/${id}`),
@@ -89,5 +91,9 @@ export const api = {
     },
     chat: (message: string, sessionId?: string) =>
       post<ArchitectChatResponse>("/architect/chat", { message, session_id: sessionId }),
+  },
+  wiki: {
+    graph: () => get<WikiGraphResponse>("/wiki/graph"),
+    node: (id: string) => get<WikiNodeDetailResponse>(`/wiki/nodes/${id}`),
   },
 };

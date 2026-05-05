@@ -116,8 +116,23 @@ The graph wiki answers: "What does OpenBrain understand?"
 
 - Started safely without schema changes: raw source nodes now have a graph detail panel that shows
   path, PARA folder, tags, summary when present, approved connected files, reasons, and confidence.
-- Next schema-backed step requires explicit migration approval before storing generated wiki pages,
-  wiki node types, citations, backlinks, or update history.
+- Done: the user explicitly approved the schema-backed draft-visible wiki slice on 2026-05-05.
+- Done: added migration `006_wiki.sql` for source chunks, wiki nodes, pages, revisions, edges,
+  citations, and the `files.needs_wiki` processing flag.
+- Done: added Worker `/wiki/graph` and `/wiki/nodes/:id` routes for draft-visible graph data and
+  node detail.
+- Done: added the Worker wiki builder job with deterministic local generation, chunk citations,
+  draft revisions, and regeneration after source changes.
+- Done: updated Graph view to merge raw file nodes with draft wiki nodes and show generated pages,
+  citations, backlinks, outgoing edges, and revision history.
+- Done: applied `006_wiki.sql` manually in Supabase, reloaded PostgREST schema, and manually smoked
+  draft-visible wiki nodes, details, chunk citations, backlinks/outgoing edges, and history in the
+  running desktop app.
+- Done: desktop Markdown saves now request an immediate wiki rebuild via
+  `PATCH /files/:id?run_wiki=true`, avoiding the local `waitUntil` regeneration gap found during
+  smoke testing.
+- Next manual step: save one more Markdown edit in the desktop app and confirm the selected wiki
+  node shows a newer revision with the updated chunk text.
 - Add generated wiki node types: `Source`, `Topic`, `Person`, `Project`, `Area`, `Resource`,
   `Claim`, `Question`, `Synthesis`, and `Contradiction`.
 - Add edge types: `derived_from`, `supports`, `contradicts`, `mentions`, `summarizes`,

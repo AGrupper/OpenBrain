@@ -241,6 +241,7 @@ describe("handleFiles — POST /files/text", () => {
       needs_embedding: true,
       needs_linking: true,
       needs_tagging: true,
+      needs_wiki: true,
     });
     expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({
       file_id: "file-1",
@@ -288,11 +289,14 @@ describe("parseFilesQuery", () => {
   });
 
   it("translates needs_linking/needs_tagging/needs_embedding=true to eq.true", () => {
-    const sp = new URLSearchParams("needs_linking=true&needs_tagging=true&needs_embedding=true");
+    const sp = new URLSearchParams(
+      "needs_linking=true&needs_tagging=true&needs_embedding=true&needs_wiki=true",
+    );
     const { params } = parseFilesQuery(sp);
     expect(params.needs_linking).toBe("eq.true");
     expect(params.needs_tagging).toBe("eq.true");
     expect(params.needs_embedding).toBe("eq.true");
+    expect(params.needs_wiki).toBe("eq.true");
   });
 
   it("ignores boolean filters when value is not 'true'", () => {
@@ -426,7 +430,9 @@ describe("handleFiles — PATCH /files/:id with path change", () => {
       // 3rd call: db.patch result
       .mockResolvedValueOnce(
         new Response(JSON.stringify([{ id: "abc", path: "new/n.md" }]), { status: 200 }),
-      );
+      )
+      // 4th call: architect job after actual path change
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ id: "job-1" }]), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
     const r2Body = new ArrayBuffer(4);
     const env = makeEnv({
