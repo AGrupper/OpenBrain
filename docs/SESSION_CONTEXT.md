@@ -21,6 +21,9 @@ session so the next session can start from repo truth instead of chat history.
   `files.needs_wiki=true`, but the local `ctx.waitUntil` rebuild was not completing reliably.
   Desktop Markdown saves now call `PATCH /files/:id?run_wiki=true`, and the Worker awaits just the
   wiki rebuild for that explicit save path while keeping linker/tagger work in the background.
+- After checkpoint commit `d2821df`, Graph cleanup changed the default Graph surface to show only
+  conceptual wiki nodes (`topic`, `claim`, `synthesis`). Raw files and `source` wiki nodes are
+  hidden from the default graph and remain accessible through source/citation detail.
 - Milestone 2 is now complete based on the user's 2026-05-05 manual screenshots: approving the
   fresh deterministic PARA folder and tag suggestions placed `openbrain-smoke-related-fresh.md`
   under `Resources/smoke/related` with `architect-smoke` and `related` tags visible in the reader.
@@ -125,9 +128,12 @@ session so the next session can start from repo truth instead of chat history.
   now queue or run wiki generation.
 - Desktop Markdown saves now request an immediate wiki rebuild so local edits produce fresh wiki
   revisions without waiting for the scheduled Worker sweep.
-- The desktop Graph now merges raw file nodes/approved links with draft wiki nodes/wiki edges, shows
-  draft badges by default, and opens generated wiki pages with chunk citations, backlinks, outgoing
-  edges, and history.
+- The initial desktop Graph wiki slice merged raw file nodes with draft wiki nodes so provenance
+  could be smoked quickly, and opened generated wiki pages with chunk citations, backlinks,
+  outgoing edges, and history.
+- The desktop Graph cleanup now defaults to the Architect understanding layer only: visible nodes
+  are `topic`, `claim`, and `synthesis`; raw files and `source` wiki nodes are kept out of the
+  default graph.
 
 ## Verified
 
@@ -146,6 +152,10 @@ Last verified on 2026-05-05 after the draft-visible wiki implementation:
   generated Markdown, chunk citations, backlinks/outgoing edges, and revision history. A direct
   builder run regenerated `Resources/openbrain-smoke-related-fresh.md` and cleared
   `needs_wiki=false` after the local save-trigger gap was diagnosed.
+- After Graph cleanup, `npm.cmd run typecheck`, `npm.cmd run lint`, `npm.cmd run format:check`,
+  `npm.cmd test`, and `npm.cmd -w apps/desktop run build` passed. API smoke confirmed one local
+  Worker listener, `Revision 3`, citations through char 185, three visible conceptual wiki nodes,
+  and one hidden source node in storage.
 
 Earlier verified on 2026-05-05 after the no-op Architect suggestion fix:
 
@@ -259,12 +269,13 @@ Continue from `docs/MASTER_PLAN.md`.
 
 Immediate targets:
 
-1. Finish Graph-First Architect Wiki smoke:
-   - Apply `infra/supabase/migrations/006_wiki.sql` manually in Supabase SQL Editor.
-   - Run `notify pgrst, 'reload schema';` or restart the local Worker so PostgREST sees the new
-     tables/columns.
-   - Restart Worker and desktop, create or edit a Markdown note, and verify draft wiki nodes appear
-     in Graph with page content, chunk citations, backlinks, outgoing edges, and history.
+1. Finish Graph-First Architect Wiki cleanup smoke:
+   - Stop duplicate local Worker processes if more than one `workerd` is listening on
+     `127.0.0.1:8787`.
+   - Restart Worker and desktop cleanly.
+   - Verify Graph defaults to wiki concepts only: no raw file nodes and no `source` wiki nodes.
+   - Verify clicking a visible wiki node shows generated page content, source file, chunk citations,
+     backlinks, outgoing edges, and history.
 2. Review or clean remaining pending suggestions:
    - Reject the stale no-op `manual-smoke.md -> Resources/SmokeManual` folder card if it remains
      visible.

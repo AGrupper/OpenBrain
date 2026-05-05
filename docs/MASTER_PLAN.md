@@ -131,8 +131,12 @@ The graph wiki answers: "What does OpenBrain understand?"
 - Done: desktop Markdown saves now request an immediate wiki rebuild via
   `PATCH /files/:id?run_wiki=true`, avoiding the local `waitUntil` regeneration gap found during
   smoke testing.
-- Next manual step: save one more Markdown edit in the desktop app and confirm the selected wiki
-  node shows a newer revision with the updated chunk text.
+- Done: Graph now defaults to conceptual wiki nodes only: `topic`, `claim`, and `synthesis`.
+  Raw files and `source` wiki nodes remain available through citations/source details instead of
+  appearing as default graph clutter.
+- Next manual step: restart Worker/Desktop cleanly, confirm only one local Worker is listening on
+  `127.0.0.1:8787`, and smoke that Graph hides raw/source nodes while wiki node details still show
+  generated page content, source file, citations, relationships, and history.
 - Add generated wiki node types: `Source`, `Topic`, `Person`, `Project`, `Area`, `Resource`,
   `Claim`, `Question`, `Synthesis`, and `Contradiction`.
 - Add edge types: `derived_from`, `supports`, `contradicts`, `mentions`, `summarizes`,
