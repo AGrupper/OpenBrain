@@ -7,6 +7,9 @@ session so the next session can start from repo truth instead of chat history.
 
 - Branch: `master`
 - Remote: `origin/master`
+- Latest implementation commit before docs wrap-up: `23def5d` (`Add graph node detail panel`)
+- Local branch is intentionally not pushed and is currently 6 commits ahead of `origin/master`.
+- Tracked working tree was clean at the 2026-05-05 wrap-up check.
 - Current implementation direction is tracked in `docs/MASTER_PLAN.md`.
 - Starting commit for this session: `c37ab89` (`Add OpenBrain session context handoff`)
 - Pushed implementation commit: `4cc6d30` (`Fix vault filename search and stale reader state`)
@@ -19,8 +22,9 @@ session so the next session can start from repo truth instead of chat history.
   edit/save workspace slice.
 - The user confirmed the Markdown edit/save/search smoke works in the running app.
 - Overnight follow-up committed the Markdown workspace checkpoint locally as `f907a22`
-  (`Complete Markdown note workspace loop`) and added the first safe Graph-First Architect Wiki
-  slice without migrations: graph node details over existing raw files and approved links.
+  (`Complete Markdown note workspace loop`) and committed the first safe Graph-First Architect Wiki
+  slice locally as `23def5d` (`Add graph node detail panel`). No migrations were added; graph node
+  details use existing raw files and approved links.
 
 ## Completed
 
@@ -199,6 +203,7 @@ Immediate targets:
    - The next meaningful step is schema-backed generated wiki pages/nodes, citations, backlinks,
      and update history.
    - Stop for explicit approval before adding the required Supabase migration.
+3. Decide whether to push the 5 local commits on `master` to `origin/master`.
 
 ## Guardrails
 
