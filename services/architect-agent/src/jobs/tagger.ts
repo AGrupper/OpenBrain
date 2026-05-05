@@ -19,6 +19,41 @@ const MODEL = process.env.ARCHITECT_MODEL ?? "gpt-4.1-mini";
 
 const headers = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
 
+function normalizeFolderForComparison(path: string | null | undefined): string | null {
+  const normalized = path
+    ?.replaceAll("\\", "/")
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join("/");
+  return normalized || null;
+}
+
+function normalizeTagsForComparison(tags: readonly string[] | null | undefined): string[] {
+  return [
+    ...new Set(
+      (tags ?? [])
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+        .sort(),
+    ),
+  ];
+}
+
+export function hasFolderChange(file: Pick<VaultFile, "folder">, suggestedFolder: string): boolean {
+  return (
+    normalizeFolderForComparison(file.folder) !== normalizeFolderForComparison(suggestedFolder)
+  );
+}
+
+export function hasTagChange(file: Pick<VaultFile, "tags">, suggestedTags: string[]): boolean {
+  const current = normalizeTagsForComparison(file.tags);
+  const suggested = normalizeTagsForComparison(suggestedTags);
+  return (
+    current.length !== suggested.length || current.some((tag, index) => tag !== suggested[index])
+  );
+}
+
 function sanitizeApiErrorBody(body: string): string {
   const redacted = body
     .replace(/Bearer\s+[A-Za-z0-9._~+/-]+=*/g, "Bearer [REDACTED]")
@@ -190,40 +225,52 @@ export async function main() {
       );
 
       const title = file.path.split("/").pop() ?? file.path;
+      const suggestedTags = normalizeTagsForComparison(suggestion.tags);
+      let createdSuggestions = 0;
 
-      await apiFetch("/architect/suggestions", {
-        method: "POST",
-        body: JSON.stringify({
-          file_id: file.id,
-          type: "folder",
-          title: `Place ${title} in ${suggestion.folder}`,
-          reason: paraPlacementReason(suggestion.folder),
-          payload: { folder: suggestion.folder },
-          confidence: 0.7,
-        }),
-      });
+      if (hasFolderChange(file, suggestion.folder)) {
+        await apiFetch("/architect/suggestions", {
+          method: "POST",
+          body: JSON.stringify({
+            file_id: file.id,
+            type: "folder",
+            title: `Place ${title} in ${suggestion.folder}`,
+            reason: paraPlacementReason(suggestion.folder),
+            payload: { folder: suggestion.folder },
+            confidence: 0.7,
+          }),
+        });
+        createdSuggestions += 1;
+      }
 
-      await apiFetch("/architect/suggestions", {
-        method: "POST",
-        body: JSON.stringify({
-          file_id: file.id,
-          type: "tags",
-          title: `Tag ${title}`,
-          reason:
-            "The Architect found these tags relevant and reusable for future search and graph context.",
-          payload: { tags: suggestion.tags },
-          confidence: 0.7,
-        }),
-      });
+      if (hasTagChange(file, suggestedTags)) {
+        await apiFetch("/architect/suggestions", {
+          method: "POST",
+          body: JSON.stringify({
+            file_id: file.id,
+            type: "tags",
+            title: `Tag ${title}`,
+            reason:
+              "The Architect found these tags relevant and reusable for future search and graph context.",
+            payload: { tags: suggestedTags },
+            confidence: 0.7,
+          }),
+        });
+        createdSuggestions += 1;
+      }
 
       await apiFetch(`/files/${file.id}`, {
         method: "PATCH",
         body: JSON.stringify({ needs_tagging: false }),
       });
 
-      console.log(
-        `[tagger] Suggested review items for "${title}" -> folder: ${suggestion.folder}, tags: ${suggestion.tags.join(", ")}`,
-      );
+      if (createdSuggestions) {
+        console.log(
+          `[tagger] Suggested review items for "${title}" -> folder: ${suggestion.folder}, tags: ${suggestedTags.join(", ")}`,
+        );
+      } else {
+        console.log(`[tagger] No review changes for "${title}"`);
+      }
 
       // Add new folder/tags to our local cache for subsequent files
       if (suggestion.folder && !existingFolders.includes(suggestion.folder)) {

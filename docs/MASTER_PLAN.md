@@ -51,7 +51,7 @@ The graph wiki answers: "What does OpenBrain understand?"
 | ------------------------------------- | ----------- | ----------------------------------------------------------------------------------------------------------------- |
 | 0. Baseline And Master Plan           | Complete    | Master plan exists, session context is current, formatting gate is fixed, and baseline checks pass.               |
 | 1. Prove Existing Vault Loop          | Complete    | Import -> process -> review -> approve -> reader/graph works locally.                                             |
-| 2. PARA Raw Vault                     | In progress | Files and notes can be browsed by PARA, and Architect suggestions can place items into PARA without silent moves. |
+| 2. PARA Raw Vault                     | Complete    | Files and notes can be browsed by PARA, and Architect suggestions can place items into PARA without silent moves. |
 | 3. Markdown Note Workspace            | Complete    | Markdown notes can be created, edited, saved, searched, renamed, and deleted.                                     |
 | 4. Graph-First Architect Wiki         | In progress | Imported sources can produce visible knowledge nodes and readable generated pages.                                |
 | 5. Broad Ingestion: Files And URLs    | Pending     | Supported files and URLs become searchable vault items with clear processing state.                               |
@@ -97,8 +97,10 @@ The graph wiki answers: "What does OpenBrain understand?"
 - Done: add Architect suggestions for PARA placement.
 - Done: add review UI copy that explains why a file belongs in a PARA category.
 - Done: replace prompt-based folder/note creation with inline controls.
+- Done: manually smoked the Review Inbox loop with deterministic Architect suggestions:
+  `openbrain-smoke-related-fresh.md` moved into `Resources/smoke/related` only after approval, and
+  approved tags appeared on the file.
 - Keep "All files" available as a neutral view.
-- Next: manually smoke the local Review Inbox loop with deterministic Architect suggestions.
 
 ### 3. Markdown Note Workspace
 

@@ -8,9 +8,15 @@ session so the next session can start from repo truth instead of chat history.
 - Branch: `master`
 - Remote: `origin/master`
 - Latest implementation commit before docs wrap-up: `23def5d` (`Add graph node detail panel`)
-- Local branch is intentionally not pushed and is currently 6 commits ahead of `origin/master`.
+- Before the 2026-05-05 publish step, the local branch was 6 commits ahead of `origin/master`.
+  Always re-check current sync state with `git status -sb` at session start.
 - Tracked working tree was clean at the 2026-05-05 wrap-up check.
 - Current implementation direction is tracked in `docs/MASTER_PLAN.md`.
+- The 2026-05-05 follow-up suppresses no-op Architect folder/tag review suggestions and adds
+  regression coverage.
+- Milestone 2 is now complete based on the user's 2026-05-05 manual screenshots: approving the
+  fresh deterministic PARA folder and tag suggestions placed `openbrain-smoke-related-fresh.md`
+  under `Resources/smoke/related` with `architect-smoke` and `related` tags visible in the reader.
 - Starting commit for this session: `c37ab89` (`Add OpenBrain session context handoff`)
 - Pushed implementation commit: `4cc6d30` (`Fix vault filename search and stale reader state`)
 - Pushed handoff commit before browser smoke confirmation: `a55f089`
@@ -92,10 +98,26 @@ session so the next session can start from repo truth instead of chat history.
   explicit `Open in reader` action.
 - The shared `VaultFile` type now includes the existing optional `summary` field so the desktop can
   display summaries already returned by the Worker.
+- The Worker scheduled tagger and standalone Architect agent tagger now skip no-op folder/tag
+  suggestions, including the stale case where a Review Inbox card recommends the file's existing
+  PARA folder.
+- The taggers still clear `needs_tagging` after no-op organization results so already-organized
+  files do not keep re-entering the suggestion loop.
+- Milestone 2 is complete: the running app manually confirmed a fresh deterministic Review Inbox
+  folder placement and tag suggestion shape the PARA vault only after approval.
 
 ## Verified
 
-Last verified on 2026-05-04 after the graph node detail panel slice:
+Last verified on 2026-05-05 after the no-op Architect suggestion fix:
+
+- Targeted tagger regression tests passed with 13 focused tests:
+  `npm.cmd test -- services/architect-agent/tests/tagger.test.ts services/worker/src/jobs/tagger.test.ts`.
+  The sandboxed run hit `spawn EPERM`, so the passing run was outside the sandbox.
+- `npm.cmd run typecheck`
+- `npm.cmd run lint`
+- `npm.cmd run format:check`
+
+Earlier verified on 2026-05-04 after the graph node detail panel slice:
 
 - `npm.cmd test` passed with 92 tests when run outside the sandbox after sandboxed Vitest hit
   `spawn EPERM`.
@@ -175,6 +197,9 @@ Manual smoke verified:
 - Creating a folder and blank note directly in the app works and persists.
 - Local screenshots on 2026-05-04 confirmed `Resources/SmokeManual/manual-smoke.md` creation in the
   running app.
+- Local screenshots on 2026-05-05 confirmed approving the fresh deterministic folder/tag
+  suggestions moved `openbrain-smoke-related-fresh.md` into `Resources/smoke/related` and displayed
+  the approved `architect-smoke` / `related` tags.
 
 ## Local Setup Notes
 
@@ -195,15 +220,17 @@ Continue from `docs/MASTER_PLAN.md`.
 
 Immediate targets:
 
-1. Finish Milestone 2 confidence:
-   - Manually smoke the Review Inbox loop in the running app if fresh pending deterministic PARA
-     suggestions are available.
-   - Do not delete disposable smoke notes/folders unless the user explicitly approves cleanup.
-2. Continue Graph-First Architect Wiki:
+1. Continue Graph-First Architect Wiki:
    - The next meaningful step is schema-backed generated wiki pages/nodes, citations, backlinks,
      and update history.
    - Stop for explicit approval before adding the required Supabase migration.
-3. Decide whether to push the 5 local commits on `master` to `origin/master`.
+2. Review or clean remaining pending suggestions:
+   - Reject the stale no-op `manual-smoke.md -> Resources/SmokeManual` folder card if it remains
+     visible.
+   - Do not approve unrelated deterministic smoke placements for real personal files unless the
+     suggested folder is actually correct.
+   - Do not delete disposable smoke notes/folders unless the user explicitly approves cleanup.
+3. After publish, verify `git status -sb` before starting new work.
 
 ## Guardrails
 

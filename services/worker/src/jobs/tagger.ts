@@ -14,6 +14,41 @@ interface CorrectionRow {
   new_value: string;
 }
 
+function normalizeFolderForComparison(path: string | null | undefined): string | null {
+  const normalized = path
+    ?.replaceAll("\\", "/")
+    .split("/")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join("/");
+  return normalized || null;
+}
+
+function normalizeTagsForComparison(tags: readonly string[] | null | undefined): string[] {
+  return [
+    ...new Set(
+      (tags ?? [])
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+        .sort(),
+    ),
+  ];
+}
+
+export function hasFolderChange(file: Pick<VaultFile, "folder">, suggestedFolder: string): boolean {
+  return (
+    normalizeFolderForComparison(file.folder) !== normalizeFolderForComparison(suggestedFolder)
+  );
+}
+
+export function hasTagChange(file: Pick<VaultFile, "tags">, suggestedTags: string[]): boolean {
+  const current = normalizeTagsForComparison(file.tags);
+  const suggested = normalizeTagsForComparison(suggestedTags);
+  return (
+    current.length !== suggested.length || current.some((tag, index) => tag !== suggested[index])
+  );
+}
+
 export async function runTagger(env: Env, opts: TaggerOptions = {}): Promise<void> {
   const max = opts.maxFiles ?? Number.parseInt(env.MAX_FILES_PER_RUN ?? "20", 10);
   console.log(`[tagger] sweep start at ${new Date().toISOString()}`);
@@ -97,33 +132,45 @@ async function processOne(
   try {
     const suggestion = await askArchitectToOrganize(env, file.path, folders, tags, corrections);
     const title = file.path.split("/").pop() ?? file.path;
+    const suggestedTags = normalizeTagsForComparison(suggestion.tags);
+    let createdSuggestions = 0;
 
-    await db(env).insert("architect_suggestions", {
-      file_id: file.id,
-      type: "folder",
-      title: `Place ${title} in ${suggestion.folder}`,
-      reason: paraPlacementReason(suggestion.folder),
-      payload: { folder: suggestion.folder },
-      confidence: 0.7,
-      status: "pending",
-    });
+    if (hasFolderChange(file, suggestion.folder)) {
+      await db(env).insert("architect_suggestions", {
+        file_id: file.id,
+        type: "folder",
+        title: `Place ${title} in ${suggestion.folder}`,
+        reason: paraPlacementReason(suggestion.folder),
+        payload: { folder: suggestion.folder },
+        confidence: 0.7,
+        status: "pending",
+      });
+      createdSuggestions += 1;
+    }
 
-    await db(env).insert("architect_suggestions", {
-      file_id: file.id,
-      type: "tags",
-      title: `Tag ${title}`,
-      reason:
-        "The Architect found these tags relevant and reusable for future search and graph context.",
-      payload: { tags: suggestion.tags },
-      confidence: 0.7,
-      status: "pending",
-    });
+    if (hasTagChange(file, suggestedTags)) {
+      await db(env).insert("architect_suggestions", {
+        file_id: file.id,
+        type: "tags",
+        title: `Tag ${title}`,
+        reason:
+          "The Architect found these tags relevant and reusable for future search and graph context.",
+        payload: { tags: suggestedTags },
+        confidence: 0.7,
+        status: "pending",
+      });
+      createdSuggestions += 1;
+    }
 
     await db(env).patch("files", file.id, { needs_tagging: false });
 
-    console.log(
-      `[tagger] suggested for "${title}" -> folder: ${suggestion.folder}, tags: ${suggestion.tags.join(", ")}`,
-    );
+    if (createdSuggestions) {
+      console.log(
+        `[tagger] suggested for "${title}" -> folder: ${suggestion.folder}, tags: ${suggestedTags.join(", ")}`,
+      );
+    } else {
+      console.log(`[tagger] no review changes for "${title}"`);
+    }
 
     if (suggestion.folder && !folders.includes(suggestion.folder)) folders.push(suggestion.folder);
     suggestion.tags.forEach((t) => {

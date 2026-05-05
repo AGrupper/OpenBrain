@@ -18,8 +18,16 @@ afterEach(() => {
 
 // ---- helpers ----
 
-function makeFile(id: string, path: string): VaultFile {
-  return { id, path, size: 100, sha256: "abc", mime: "text/markdown", updated_at: "2025-01-01" };
+function makeFile(id: string, path: string, overrides: Partial<VaultFile> = {}): VaultFile {
+  return {
+    id,
+    path,
+    size: 100,
+    sha256: "abc",
+    mime: "text/markdown",
+    updated_at: "2025-01-01",
+    ...overrides,
+  };
 }
 
 function okResponse(body: unknown, status = 200): Response {
@@ -162,6 +170,46 @@ describe("main", () => {
     expect(patchBodies).toEqual([{ needs_tagging: false }]);
   });
 
+  it("does not create no-op review items when folder and tags are unchanged", async () => {
+    const file = makeFile("file-1", "Resources/SmokeManual/manual-smoke.md", {
+      folder: "Resources/SmokeManual",
+      tags: ["architect-smoke"],
+    });
+    const suggestionBodies: unknown[] = [];
+    const patchBodies: unknown[] = [];
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, opts?: RequestInit): Promise<Response> => {
+        if (url.includes("needs_tagging=true")) return okResponse([file]);
+        if (url.includes("select=folder")) {
+          return okResponse([{ folder: file.folder, tags: file.tags }]);
+        }
+        if (url.includes("/corrections")) return okResponse([]);
+        if (url.includes("anthropic")) {
+          return anthropicResponse({
+            folder: "Resources/SmokeManual",
+            tags: ["architect-smoke"],
+          });
+        }
+        if (url.includes("/architect/suggestions")) {
+          suggestionBodies.push(JSON.parse(opts?.body as string));
+          return okResponse({ id: `suggestion-${suggestionBodies.length}` }, 201);
+        }
+        if (url.includes(`/files/${file.id}`)) {
+          patchBodies.push(JSON.parse(opts?.body as string));
+          return okResponse(null, 204);
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+      }),
+    );
+
+    await main();
+
+    expect(suggestionBodies).toHaveLength(0);
+    expect(patchBodies).toEqual([{ needs_tagging: false }]);
+  });
+
   it("skips a file when AI call fails and continues with remaining files", async () => {
     const fileA = makeFile("a", "a.md");
     const fileB = makeFile("b", "b.md");
@@ -284,7 +332,11 @@ describe("main", () => {
 
     await main();
 
-    expect(suggestionBodies[1]).toMatchObject({ payload: { tags: [] } });
+    expect(suggestionBodies).toHaveLength(1);
+    expect(suggestionBodies[0]).toMatchObject({
+      type: "folder",
+      payload: { folder: "Resources/misc" },
+    });
     expect(patchBodies).toEqual([{ needs_tagging: false }]);
   });
 });
