@@ -36,6 +36,9 @@ export interface VaultFile {
   folder?: string;
   summary?: string | null;
   text_content?: string | null;
+  needs_embedding?: boolean;
+  needs_linking?: boolean;
+  needs_tagging?: boolean;
   needs_wiki?: boolean;
 }
 

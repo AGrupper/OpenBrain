@@ -134,6 +134,9 @@ session so the next session can start from repo truth instead of chat history.
 - The desktop Graph cleanup now defaults to the Architect understanding layer only: visible nodes
   are `topic`, `claim`, and `synthesis`; raw files and `source` wiki nodes are kept out of the
   default graph.
+- Milestone 5 has started with a conservative processing-state UI slice: the List view now surfaces
+  existing `needs_embedding`, `needs_linking`, `needs_tagging`, and `needs_wiki` flags without new
+  schema or route changes.
 
 ## Verified
 
@@ -156,6 +159,8 @@ Last verified on 2026-05-05 after the draft-visible wiki implementation:
   `npm.cmd test`, and `npm.cmd -w apps/desktop run build` passed. API smoke confirmed one local
   Worker listener, `Revision 3`, citations through char 185, three visible conceptual wiki nodes,
   and one hidden source node in storage.
+- After the Milestone 5 processing-state UI slice, `npm.cmd run typecheck`, `npm.cmd run lint`, and
+  `npm.cmd run format:check` passed before full final verification.
 
 Earlier verified on 2026-05-05 after the no-op Architect suggestion fix:
 
@@ -282,7 +287,11 @@ Immediate targets:
    - Do not approve unrelated deterministic smoke placements for real personal files unless the
      suggested folder is actually correct.
    - Do not delete disposable smoke notes/folders unless the user explicitly approves cleanup.
-3. After publish, verify `git status -sb` before starting new work.
+3. Continue Milestone 5 broad ingestion:
+   - Keep the next slice conservative unless the user approves a migration.
+   - Candidate next step: add explicit upload/extraction status details for docx/text imports and
+     then plan URL ingestion separately.
+4. After publish, verify `git status -sb` before starting new work.
 
 ## Guardrails
 

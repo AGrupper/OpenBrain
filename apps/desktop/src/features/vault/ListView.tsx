@@ -321,6 +321,7 @@ export function ListView({
                 ))}
               </div>
             )}
+            <ProcessingState file={selectedFile} />
             <FileActions
               file={selectedFile}
               files={files}
@@ -555,6 +556,7 @@ function FileRow({
 }) {
   const name = file.path.split("/").pop() ?? file.path;
   const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  const pendingCount = pendingProcessingLabels(file).length;
   return (
     <div
       className={["file-row", selected ? "selected" : ""].join(" ")}
@@ -563,7 +565,33 @@ function FileRow({
     >
       <span style={styles.fileIcon}>{extIcon(ext)}</span>
       <span style={styles.fileName}>{name}</span>
+      {pendingCount > 0 && <span style={styles.processingMini}>{pendingCount}</span>}
       <span style={styles.fileSize}>{formatSize(file.size)}</span>
+    </div>
+  );
+}
+
+function ProcessingState({ file }: { file: VaultFile }) {
+  const steps = processingSteps(file);
+  const pendingCount = steps.filter((step) => step.pending).length;
+  return (
+    <div style={styles.processingPanel}>
+      <div style={styles.processingHeader}>
+        <span style={styles.processingTitle}>Processing</span>
+        <span style={pendingCount > 0 ? styles.processingPending : styles.processingReady}>
+          {pendingCount > 0 ? `${pendingCount} pending` : "Ready"}
+        </span>
+      </div>
+      <div style={styles.processingSteps}>
+        {steps.map((step) => (
+          <span
+            key={step.key}
+            style={step.pending ? styles.processingStepPending : styles.processingStepReady}
+          >
+            {step.label}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -720,6 +748,30 @@ function isReadableText(file: VaultFile): boolean {
   );
 }
 
+function hasExtractedText(file: VaultFile): boolean {
+  return typeof file.text_content === "string" && file.text_content.length > 0;
+}
+
+function pendingProcessingLabels(file: VaultFile): string[] {
+  return processingSteps(file)
+    .filter((step) => step.pending)
+    .map((step) => step.label);
+}
+
+function processingSteps(file: VaultFile): Array<{ key: string; label: string; pending: boolean }> {
+  return [
+    {
+      key: "text",
+      label: hasExtractedText(file) ? "Text extracted" : "Original stored",
+      pending: false,
+    },
+    { key: "embedding", label: "Embedding", pending: Boolean(file.needs_embedding) },
+    { key: "links", label: "Links", pending: Boolean(file.needs_linking) },
+    { key: "tags", label: "Tags", pending: Boolean(file.needs_tagging) },
+    { key: "wiki", label: "Wiki", pending: Boolean(file.needs_wiki) },
+  ];
+}
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 ** 2) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -872,6 +924,20 @@ const styles: Record<string, React.CSSProperties> = {
   },
   fileName: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   fileSize: { color: "var(--text-muted)", fontSize: 11, flexShrink: 0 },
+  processingMini: {
+    color: "#fed7aa",
+    background: "#3b2308",
+    border: "1px solid #92400e",
+    borderRadius: 999,
+    minWidth: 18,
+    height: 18,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    fontSize: 10,
+    fontWeight: 700,
+    flexShrink: 0,
+  },
   empty: {
     padding: "var(--spacing-4)",
     color: "var(--text-muted)",
@@ -900,6 +966,58 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 999,
     padding: "3px 8px",
     fontSize: 12,
+  },
+  processingPanel: {
+    border: "1px solid var(--border-color)",
+    borderRadius: "var(--radius-md)",
+    padding: "var(--spacing-3)",
+    marginBottom: "var(--spacing-4)",
+    background: "var(--bg-surface)",
+  },
+  processingHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "var(--spacing-2)",
+    marginBottom: "var(--spacing-2)",
+  },
+  processingTitle: {
+    color: "var(--text-secondary)",
+    fontSize: 12,
+    fontWeight: 700,
+  },
+  processingReady: {
+    color: "#86efac",
+    fontSize: 11,
+    fontWeight: 700,
+  },
+  processingPending: {
+    color: "#fed7aa",
+    fontSize: 11,
+    fontWeight: 700,
+  },
+  processingSteps: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: "var(--spacing-2)",
+  },
+  processingStepReady: {
+    color: "#a7f3d0",
+    background: "#052e24",
+    border: "1px solid #047857",
+    borderRadius: "var(--radius-sm)",
+    padding: "3px 7px",
+    fontSize: 11,
+    fontWeight: 700,
+  },
+  processingStepPending: {
+    color: "#fed7aa",
+    background: "#3b2308",
+    border: "1px solid #92400e",
+    borderRadius: "var(--radius-sm)",
+    padding: "3px 7px",
+    fontSize: 11,
+    fontWeight: 700,
   },
   actions: {
     display: "flex",

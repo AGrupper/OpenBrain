@@ -54,7 +54,7 @@ The graph wiki answers: "What does OpenBrain understand?"
 | 2. PARA Raw Vault                     | Complete    | Files and notes can be browsed by PARA, and Architect suggestions can place items into PARA without silent moves. |
 | 3. Markdown Note Workspace            | Complete    | Markdown notes can be created, edited, saved, searched, renamed, and deleted.                                     |
 | 4. Graph-First Architect Wiki         | In progress | Imported sources can produce visible knowledge nodes and readable generated pages.                                |
-| 5. Broad Ingestion: Files And URLs    | Pending     | Supported files and URLs become searchable vault items with clear processing state.                               |
+| 5. Broad Ingestion: Files And URLs    | In progress | Supported files and URLs become searchable vault items with clear processing state.                               |
 | 6. Embeddings And Media Understanding | Pending     | Search/chat can retrieve from raw files, media chunks, transcripts, and wiki pages.                               |
 | 7. Architect Recommendations          | Pending     | The Architect proactively recommends while user-owned material remains controlled.                                |
 | 8. Real Login                         | Pending     | Real login works and users cannot access each other's vault data.                                                 |
@@ -147,6 +147,10 @@ The graph wiki answers: "What does OpenBrain understand?"
 
 ### 5. Broad Ingestion: Files And URLs
 
+- Started conservatively after the Graph cleanup: existing Markdown/text/docx upload extraction and
+  processing flags were confirmed before adding new ingestion sources.
+- Done: the raw List view now shows processing state from existing file flags, including pending
+  embedding, linking, tagging, and wiki work, without adding schema or route changes.
 - Accept local files and arbitrary allowed URLs.
 - Store metadata, extracted text/transcripts, summaries, and processing status.
 - Support webpages, PDFs, images, audio, video, and YouTube where extraction is allowed.
