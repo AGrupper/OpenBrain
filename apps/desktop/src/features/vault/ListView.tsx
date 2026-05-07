@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import {
   type Link,
@@ -584,10 +584,7 @@ function ProcessingState({ file }: { file: VaultFile }) {
       </div>
       <div style={styles.processingSteps}>
         {steps.map((step) => (
-          <span
-            key={step.key}
-            style={step.pending ? styles.processingStepPending : styles.processingStepReady}
-          >
+          <span key={step.key} style={processingStepStyle(step)}>
             {step.label}
           </span>
         ))}
@@ -748,14 +745,24 @@ function isReadableText(file: VaultFile): boolean {
   );
 }
 
+function supportsTextExtraction(file: VaultFile): boolean {
+  const path = file.path.toLowerCase();
+  return (
+    isReadableText(file) ||
+    path.endsWith(".docx") ||
+    file.mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  );
+}
+
 function hasExtractedText(file: VaultFile): boolean {
   return typeof file.text_content === "string" && file.text_content.trim().length > 0;
 }
 
 function textAvailabilityLabel(file: VaultFile): string {
   if (hasExtractedText(file)) return "Text extracted";
-  if (typeof file.text_content === "string") return "Empty text";
-  return "No text extracted";
+  if (typeof file.text_content === "string") return "Text empty";
+  if (supportsTextExtraction(file)) return "No text extracted";
+  return "No text extractor";
 }
 
 function canBuildWiki(file: VaultFile): boolean {
@@ -768,21 +775,46 @@ function pendingProcessingLabels(file: VaultFile): string[] {
     .map((step) => step.label);
 }
 
-function processingSteps(file: VaultFile): Array<{ key: string; label: string; pending: boolean }> {
-  const steps = [
+type ProcessingStep = {
+  key: string;
+  label: string;
+  pending: boolean;
+  tone?: "ready" | "pending" | "notice";
+};
+
+function processingSteps(file: VaultFile): ProcessingStep[] {
+  const steps: ProcessingStep[] = [
+    {
+      key: "original",
+      label: "Original stored",
+      pending: false,
+      tone: "ready",
+    },
     {
       key: "text",
       label: textAvailabilityLabel(file),
       pending: false,
+      tone: hasExtractedText(file) ? "ready" : "notice",
     },
-    { key: "embedding", label: "Embedding", pending: Boolean(file.needs_embedding) },
-    { key: "links", label: "Links", pending: Boolean(file.needs_linking) },
-    { key: "tags", label: "Tags", pending: Boolean(file.needs_tagging) },
+    {
+      key: "embedding",
+      label: "Embedding",
+      pending: Boolean(file.needs_embedding),
+      tone: "pending",
+    },
+    { key: "links", label: "Links", pending: Boolean(file.needs_linking), tone: "pending" },
+    { key: "tags", label: "Tags", pending: Boolean(file.needs_tagging), tone: "pending" },
   ];
   if (canBuildWiki(file)) {
-    steps.push({ key: "wiki", label: "Wiki", pending: Boolean(file.needs_wiki) });
+    steps.push({ key: "wiki", label: "Wiki", pending: Boolean(file.needs_wiki), tone: "pending" });
   }
   return steps;
+}
+
+function processingStepStyle(step: ProcessingStep): CSSProperties {
+  if (step.pending) return styles.processingStepPending;
+  if (step.tone === "notice") return styles.processingStepNotice;
+  return styles.processingStepReady;
 }
 
 function formatSize(bytes: number): string {
@@ -1027,6 +1059,15 @@ const styles: Record<string, React.CSSProperties> = {
     color: "#fed7aa",
     background: "#3b2308",
     border: "1px solid #92400e",
+    borderRadius: "var(--radius-sm)",
+    padding: "3px 7px",
+    fontSize: 11,
+    fontWeight: 700,
+  },
+  processingStepNotice: {
+    color: "var(--text-secondary)",
+    background: "var(--bg-elevated)",
+    border: "1px solid var(--border-color)",
     borderRadius: "var(--radius-sm)",
     padding: "3px 7px",
     fontSize: 11,
