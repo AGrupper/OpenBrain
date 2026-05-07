@@ -8,6 +8,14 @@ import type {
   ArchitectSuggestionStatus,
   ArchitectSuggestionType,
 } from "@openbrain/shared";
+import {
+  runLinker,
+  runLinkerForFile,
+  runTagger,
+  runTaggerForFile,
+  runWikiBuilder,
+  runWikiBuilderForFile,
+} from "../jobs";
 import { askLLM, embedText } from "../lib/providers";
 
 const ARCHITECT_SYSTEM_PROMPT = `You are The Architect, OpenBrain's vault-only AI.
@@ -15,6 +23,9 @@ Answer only from the vault context provided in this request.
 If the context does not support an answer, say you do not know from the vault.
 Do not use web browsing, external memory, OpenClaw context, or unsupported general knowledge.
 Cite the provided source numbers when making claims.`;
+
+const JOB_SCOPES = ["linker", "tagger", "wiki"] as const;
+type JobScope = (typeof JOB_SCOPES)[number];
 
 function db(env: Env) {
   const base = env.SUPABASE_URL;
@@ -101,6 +112,32 @@ async function handleJobs(
     return Response.json(await db(env).query("architect_jobs", params));
   }
 
+  if (method === "POST" && id === "run") {
+    const body = (await request.json().catch(() => ({}))) as {
+      file_id?: unknown;
+      scopes?: unknown;
+    };
+    const fileId = typeof body.file_id === "string" && body.file_id.trim() ? body.file_id : null;
+    const scopes = parseJobScopes(body.scopes);
+    if (!scopes)
+      return new Response("scopes must contain linker, tagger, or wiki", { status: 400 });
+
+    for (const scope of scopes) {
+      if (scope === "linker") {
+        if (fileId) await runLinkerForFile(env, fileId);
+        else await runLinker(env);
+      } else if (scope === "tagger") {
+        if (fileId) await runTaggerForFile(env, fileId);
+        else await runTagger(env);
+      } else if (scope === "wiki") {
+        if (fileId) await runWikiBuilderForFile(env, fileId);
+        else await runWikiBuilder(env);
+      }
+    }
+
+    return Response.json({ ok: true, file_id: fileId, ran: scopes });
+  }
+
   if (method === "POST" && !id) {
     const body = (await request.json()) as { file_id?: string };
     if (!body.file_id) return new Response("file_id is required", { status: 400 });
@@ -120,6 +157,14 @@ async function handleJobs(
   }
 
   return new Response("Method not allowed", { status: 405 });
+}
+
+function parseJobScopes(input: unknown): JobScope[] | null {
+  if (input === undefined) return [...JOB_SCOPES];
+  if (!Array.isArray(input)) return null;
+  const scopes = input.filter((scope): scope is JobScope => JOB_SCOPES.includes(scope as JobScope));
+  if (scopes.length !== input.length || !scopes.length) return null;
+  return [...new Set(scopes)];
 }
 
 async function handleSuggestions(

@@ -1,6 +1,23 @@
 import { describe, expect, it, vi, beforeEach, type Mock } from "vitest";
 import { handleArchitect } from "./architect";
 import type { Env } from "../app";
+import {
+  runLinker,
+  runLinkerForFile,
+  runTagger,
+  runTaggerForFile,
+  runWikiBuilder,
+  runWikiBuilderForFile,
+} from "../jobs";
+
+vi.mock("../jobs", () => ({
+  runLinker: vi.fn(async () => undefined),
+  runLinkerForFile: vi.fn(async () => undefined),
+  runTagger: vi.fn(async () => undefined),
+  runTaggerForFile: vi.fn(async () => undefined),
+  runWikiBuilder: vi.fn(async () => undefined),
+  runWikiBuilderForFile: vi.fn(async () => undefined),
+}));
 
 function makeEnv(overrides: Partial<Env> = {}): Env {
   return {
@@ -279,5 +296,59 @@ describe("handleArchitect - chat", () => {
     // Gemini embed was attempted; vector RPC was NOT called because embedding failed.
     expect(calls[0].url).toContain("generativelanguage.googleapis.com");
     expect(calls.some((c) => c.url.includes("search_files_by_embedding"))).toBe(false);
+  });
+});
+
+describe("handleArchitect - jobs", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("runs all Architect processing jobs on demand", async () => {
+    const req = new Request("https://api.openbrain.dev/architect/jobs/run", {
+      method: "POST",
+      body: JSON.stringify({}),
+    });
+
+    const res = await handleArchitect(req, makeEnv(), new URL(req.url));
+    const body = (await res.json()) as { ok: boolean; ran: string[] };
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ ok: true, file_id: null, ran: ["linker", "tagger", "wiki"] });
+    expect(runLinker).toHaveBeenCalledOnce();
+    expect(runTagger).toHaveBeenCalledOnce();
+    expect(runWikiBuilder).toHaveBeenCalledOnce();
+  });
+
+  it("runs selected processing scopes for one file", async () => {
+    const req = new Request("https://api.openbrain.dev/architect/jobs/run", {
+      method: "POST",
+      body: JSON.stringify({ file_id: "file-1", scopes: ["wiki", "tagger", "wiki"] }),
+    });
+
+    const res = await handleArchitect(req, makeEnv(), new URL(req.url));
+    const body = (await res.json()) as { ok: boolean; file_id: string; ran: string[] };
+
+    expect(res.status).toBe(200);
+    expect(body).toEqual({ ok: true, file_id: "file-1", ran: ["wiki", "tagger"] });
+    expect(runWikiBuilderForFile).toHaveBeenCalledWith(expect.anything(), "file-1");
+    expect(runTaggerForFile).toHaveBeenCalledWith(expect.anything(), "file-1");
+    expect(runLinkerForFile).not.toHaveBeenCalled();
+    expect(runWikiBuilder).not.toHaveBeenCalled();
+    expect(runTagger).not.toHaveBeenCalled();
+    expect(runLinker).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid processing scopes", async () => {
+    const req = new Request("https://api.openbrain.dev/architect/jobs/run", {
+      method: "POST",
+      body: JSON.stringify({ scopes: ["wiki", "bad"] }),
+    });
+
+    const res = await handleArchitect(req, makeEnv(), new URL(req.url));
+
+    expect(res.status).toBe(400);
+    expect(runWikiBuilder).not.toHaveBeenCalled();
   });
 });

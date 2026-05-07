@@ -47,6 +47,8 @@ export function ListView({
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [processingNow, setProcessingNow] = useState(false);
+  const [processingError, setProcessingError] = useState<string | null>(null);
   const tree = useMemo(() => buildExplorerTree(files, folders), [files, folders]);
   const creationTarget = selectedFolder ?? PARA_DEFAULT_ROOT;
   const canEditSelected = selectedFile ? isMarkdownFile(selectedFile) : false;
@@ -72,11 +74,13 @@ export function ListView({
       setEditing(false);
       setDraft("");
       setSaveError(null);
+      setProcessingError(null);
       return;
     }
     setEditing(false);
     setDraft("");
     setSaveError(null);
+    setProcessingError(null);
     api.files
       .linksForFile(selectedFile.id)
       .then(setLinks)
@@ -190,6 +194,23 @@ export function ListView({
       setSaveError(`Save failed: ${String(e)}`);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const runProcessingNow = async () => {
+    if (!selectedFile) return;
+    setProcessingNow(true);
+    setProcessingError(null);
+    try {
+      await api.architect.runJobs({
+        file_id: selectedFile.id,
+        scopes: pendingJobScopes(selectedFile),
+      });
+      await onChange();
+    } catch (err) {
+      setProcessingError(String(err));
+    } finally {
+      setProcessingNow(false);
     }
   };
 
@@ -321,7 +342,12 @@ export function ListView({
                 ))}
               </div>
             )}
-            <ProcessingState file={selectedFile} />
+            <ProcessingState
+              file={selectedFile}
+              running={processingNow}
+              error={processingError}
+              onRunNow={() => void runProcessingNow()}
+            />
             <FileActions
               file={selectedFile}
               files={files}
@@ -571,17 +597,35 @@ function FileRow({
   );
 }
 
-function ProcessingState({ file }: { file: VaultFile }) {
+function ProcessingState({
+  file,
+  running,
+  error,
+  onRunNow,
+}: {
+  file: VaultFile;
+  running: boolean;
+  error: string | null;
+  onRunNow: () => void;
+}) {
   const steps = processingSteps(file);
   const pendingCount = steps.filter((step) => step.pending).length;
   return (
     <div style={styles.processingPanel}>
       <div style={styles.processingHeader}>
         <span style={styles.processingTitle}>Processing</span>
-        <span style={pendingCount > 0 ? styles.processingPending : styles.processingReady}>
-          {pendingCount > 0 ? `${pendingCount} pending` : "Ready"}
-        </span>
+        <div style={styles.processingHeaderActions}>
+          <span style={pendingCount > 0 ? styles.processingPending : styles.processingReady}>
+            {pendingCount > 0 ? `${pendingCount} pending` : "Ready"}
+          </span>
+          {pendingCount > 0 && (
+            <button className="btn-action" onClick={onRunNow} disabled={running}>
+              {running ? "Running..." : "Run now"}
+            </button>
+          )}
+        </div>
       </div>
+      {error && <div style={styles.processingError}>{error}</div>}
       <div style={styles.processingSteps}>
         {steps.map((step) => (
           <span key={step.key} style={processingStepStyle(step)}>
@@ -773,6 +817,17 @@ function pendingProcessingLabels(file: VaultFile): string[] {
   return processingSteps(file)
     .filter((step) => step.pending)
     .map((step) => step.label);
+}
+
+function pendingJobScopes(file: VaultFile): string[] {
+  const scopes = new Set<string>();
+  for (const step of processingSteps(file)) {
+    if (!step.pending) continue;
+    if (step.key === "embedding" || step.key === "links") scopes.add("linker");
+    if (step.key === "tags") scopes.add("tagger");
+    if (step.key === "wiki") scopes.add("wiki");
+  }
+  return [...scopes];
 }
 
 type ProcessingStep = {
@@ -1026,10 +1081,20 @@ const styles: Record<string, React.CSSProperties> = {
     gap: "var(--spacing-2)",
     marginBottom: "var(--spacing-2)",
   },
+  processingHeaderActions: {
+    display: "flex",
+    alignItems: "center",
+    gap: "var(--spacing-2)",
+  },
   processingTitle: {
     color: "var(--text-secondary)",
     fontSize: 12,
     fontWeight: 700,
+  },
+  processingError: {
+    color: "var(--accent-danger)",
+    fontSize: 12,
+    marginBottom: "var(--spacing-2)",
   },
   processingReady: {
     color: "#86efac",

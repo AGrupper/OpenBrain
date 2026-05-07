@@ -84,6 +84,8 @@ export const api = {
       post("/corrections", { file_id: fileId, field, old_value: oldValue, new_value: newValue }),
   },
   architect: {
+    runJobs: (body: { file_id?: string; scopes?: string[] } = {}) =>
+      post<{ ok: boolean; ran: string[] }>("/architect/jobs/run", body),
     suggestions: {
       pending: () => get<ArchitectSuggestion[]>("/architect/suggestions", { status: "pending" }),
       update: (id: string, status: ArchitectSuggestionStatus) =>
