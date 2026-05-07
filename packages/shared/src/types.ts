@@ -1,4 +1,6 @@
 export type FileStatus = "stored" | "pending_upload" | "processing" | "error";
+export type FileSourceType = "file" | "webpage" | "pdf" | "youtube";
+export type FileExtractionStatus = "stored" | "extracted" | "no_text" | "failed";
 export type ArchitectJobStatus = "pending" | "processing" | "suggestions_created" | "failed";
 export type ArchitectSuggestionStatus = "pending" | "approved" | "rejected";
 export type ArchitectSuggestionType = "summary" | "tags" | "folder" | "link" | "action" | "cleanup";
@@ -36,6 +38,10 @@ export interface VaultFile {
   folder?: string;
   summary?: string | null;
   text_content?: string | null;
+  source_type?: FileSourceType;
+  source_url?: string | null;
+  extraction_status?: FileExtractionStatus;
+  extraction_error?: string | null;
   needs_embedding?: boolean;
   needs_linking?: boolean;
   needs_tagging?: boolean;

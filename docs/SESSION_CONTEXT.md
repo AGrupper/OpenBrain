@@ -41,6 +41,10 @@ session so the next session can start from repo truth instead of chat history.
   (`Complete Markdown note workspace loop`) and committed the first safe Graph-First Architect Wiki
   slice locally as `23def5d` (`Add graph node detail panel`). No migrations were added; graph node
   details use existing raw files and approved links.
+- Current 2026-05-07 URL ingestion slice adds migration `007_url_ingestion.sql`, Worker
+  `POST /files/url`, shared URL source metadata types, and desktop URL import UI. The migration has
+  not been applied to Supabase yet; apply it manually before smoking URL imports against the live
+  local app.
 
 ## Completed
 
@@ -139,6 +143,16 @@ session so the next session can start from repo truth instead of chat history.
   schema or route changes.
 - The follow-up Milestone 5 slice now keeps empty/no-text files out of wiki-pending state and shows
   original storage separately from text extraction result in the List processing panel.
+- URL ingestion v1 is implemented for public webpages, PDFs, and YouTube links:
+  - `007_url_ingestion.sql` adds URL source metadata and extraction status fields to `files`.
+  - `POST /files/url` validates public `http(s)` URLs, blocks local/private hosts and redirects,
+    imports the URL as a Markdown source note, stores source metadata, and queues Architect work.
+  - Webpage imports extract readable HTML text and can generate wiki drafts.
+  - PDF and YouTube imports are preserved as source notes with `extraction_status=no_text` and no
+    fake wiki-pending work.
+  - URL imports match existing folder tokens before falling back to `Resources/Web`.
+  - Desktop has an import-bar URL field and shows source URL/extraction state in List.
+- Notion access is intentionally deferred to a separate authenticated connector/integration slice.
 
 ## Verified
 
@@ -168,6 +182,10 @@ Last verified on 2026-05-05 after the draft-visible wiki implementation:
   `npm.cmd run lint`, `npm.cmd run format:check`, `npm.cmd test`, and
   `npm.cmd -w apps/desktop run build` passed. Vitest and desktop build needed outside-sandbox
   reruns after the known Windows `spawn EPERM`.
+- During the 2026-05-07 URL ingestion slice, `npm.cmd run typecheck`, `npm.cmd run lint`, and
+  `npm.cmd run format:check` passed. Focused Vitest for `services/worker/src/routes/files.test.ts`
+  hit the known sandbox `spawn EPERM`, and the outside-sandbox rerun was blocked by the platform
+  usage limit, so test execution still needs a later rerun.
 
 Earlier verified on 2026-05-05 after the no-op Architect suggestion fix:
 
@@ -295,9 +313,13 @@ Immediate targets:
      suggested folder is actually correct.
    - Do not delete disposable smoke notes/folders unless the user explicitly approves cleanup.
 3. Continue Milestone 5 broad ingestion:
-   - Keep the next slice conservative unless the user approves a migration.
-   - Next likely step: decide the URL ingestion policy and minimal processing-state model before
-     adding URL import code. Stop for explicit approval if this requires a schema migration.
+   - Apply `infra/supabase/migrations/007_url_ingestion.sql` manually in Supabase and run
+     `notify pgrst, 'reload schema';` in the Supabase SQL editor.
+   - Restart Worker/Desktop cleanly, then smoke import one webpage, one PDF URL, and one YouTube URL.
+   - Confirm webpage imports can become wiki graph concepts after processing while PDF/YouTube
+     imports honestly show `No text extracted` and no wiki-pending badge.
+   - Next implementation slice after URL smoke: PDF text extraction and YouTube transcript support,
+     or Notion connector planning if the user prioritizes Notion.
 4. After publish, verify `git status -sb` before starting new work.
 
 ## Guardrails

@@ -76,6 +76,22 @@ export default function App() {
     }
   };
 
+  const handleAddUrl = async (sourceUrl: string) => {
+    setImportStatus("Importing URL...");
+    setImportError(null);
+    try {
+      const file = await api.files.createUrl(sourceUrl);
+      setImportStatus(`Imported URL: ${file.path}`);
+      setSelectedFile(file);
+      setView("list");
+      loadFiles();
+    } catch (e) {
+      setImportStatus(null);
+      setImportError(String(e));
+      throw e;
+    }
+  };
+
   const handleThemeChange = (nextTheme: Theme) => {
     setTheme(nextTheme);
     persistTheme(nextTheme);
@@ -89,7 +105,12 @@ export default function App() {
   return (
     <div style={styles.shell}>
       <AppHeader view={view} onViewChange={setView} onOpenSettings={() => setSettingsOpen(true)} />
-      <ImportBar error={importError} importStatus={importStatus} onAddFiles={handleAddFiles} />
+      <ImportBar
+        error={importError}
+        importStatus={importStatus}
+        onAddFiles={handleAddFiles}
+        onAddUrl={handleAddUrl}
+      />
       <SearchBar onSelect={selectInReader} />
       <main style={styles.main}>
         {loading && <div style={styles.center}>Loading vault...</div>}

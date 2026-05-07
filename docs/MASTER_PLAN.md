@@ -153,6 +153,19 @@ The graph wiki answers: "What does OpenBrain understand?"
   embedding, linking, tagging, and wiki work, without adding schema or route changes.
 - Done: empty/no-text files no longer get marked as wiki-pending, and the List processing panel now
   separates original storage from text extraction result.
+- Done: added migration `007_url_ingestion.sql` for URL source metadata:
+  `files.source_type`, `source_url`, `extraction_status`, and `extraction_error`.
+- Done: added Worker `POST /files/url` for public webpages, PDFs, and YouTube links. Webpages
+  extract readable HTML text; PDFs and YouTube links are preserved as source notes with honest
+  `no_text` extraction state until transcript/PDF extraction is added.
+- Done: URL imports choose a relevant existing folder when the title/URL matches folder tokens,
+  otherwise they fall back to `Resources/Web`.
+- Done: desktop List can add URLs from the import bar and shows source URL plus truthful extraction
+  state.
+- Next manual step: apply `infra/supabase/migrations/007_url_ingestion.sql` in Supabase, reload the
+  PostgREST schema, restart Worker/Desktop, and smoke webpage, PDF, and YouTube imports.
+- Later: Notion access needs a separate authenticated connector/integration design, not the public
+  URL ingestion route.
 - Accept local files and arbitrary allowed URLs.
 - Store metadata, extracted text/transcripts, summaries, and processing status.
 - Support webpages, PDFs, images, audio, video, and YouTube where extraction is allowed.

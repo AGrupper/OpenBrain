@@ -28,7 +28,10 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     headers: jsonHeaders,
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`POST ${path} failed: ${res.status}`);
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`POST ${path} failed: ${res.status}${detail ? `: ${detail}` : ""}`);
+  }
   return res.json();
 }
 
@@ -53,6 +56,8 @@ export const api = {
     get: (id: string) => get<VaultFile>(`/files/${id}`),
     linksForFile: (id: string) => get<Link[]>(`/links/for-file/${id}`),
     createText: (path: string, content = "") => post<VaultFile>("/files/text", { path, content }),
+    createUrl: (sourceUrl: string, folder?: string | null) =>
+      post<VaultFile>("/files/url", { url: sourceUrl, folder }),
     saveText: (id: string, content: string) =>
       patch<VaultFile | VaultFile[]>(`/files/${id}?run_wiki=true`, { text_content: content }),
     patch: (id: string, body: Partial<VaultFile>) => patch<VaultFile>(`/files/${id}`, body),

@@ -333,6 +333,9 @@ export function ListView({
               {formatSize(selectedFile.size)} | {selectedFile.mime} |{" "}
               {new Date(selectedFile.updated_at).toLocaleDateString()}
             </div>
+            {selectedFile.source_url && (
+              <div style={styles.sourceMeta}>Source URL: {selectedFile.source_url}</div>
+            )}
             {selectedFile.tags && selectedFile.tags.length > 0 && (
               <div style={styles.tags}>
                 {selectedFile.tags.map((tag) => (
@@ -799,12 +802,22 @@ function supportsTextExtraction(file: VaultFile): boolean {
 }
 
 function hasExtractedText(file: VaultFile): boolean {
+  if (file.extraction_status === "no_text" || file.extraction_status === "failed") return false;
   return typeof file.text_content === "string" && file.text_content.trim().length > 0;
 }
 
 function textAvailabilityLabel(file: VaultFile): string {
+  if (file.extraction_status === "failed") return "Extraction failed";
+  if (file.extraction_status === "no_text") {
+    const isEmptyUserText =
+      (!file.source_type || file.source_type === "file") &&
+      typeof file.text_content === "string" &&
+      file.text_content.trim().length === 0;
+    return isEmptyUserText ? "Empty text" : "No text extracted";
+  }
+  if (file.extraction_status === "extracted") return "Text extracted";
   if (hasExtractedText(file)) return "Text extracted";
-  if (typeof file.text_content === "string") return "Text empty";
+  if (typeof file.text_content === "string") return "Empty text";
   if (supportsTextExtraction(file)) return "No text extracted";
   return "No text extractor";
 }
@@ -1058,6 +1071,13 @@ const styles: Record<string, React.CSSProperties> = {
     display: "flex",
     gap: "var(--spacing-2)",
   },
+  sourceMeta: {
+    color: "var(--text-secondary)",
+    fontSize: 12,
+    marginTop: "-8px",
+    marginBottom: "var(--spacing-4)",
+    overflowWrap: "anywhere",
+  },
   tags: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: "var(--spacing-4)" },
   tag: {
     color: "var(--accent-primary)",
@@ -1131,7 +1151,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   processingStepNotice: {
     color: "var(--text-secondary)",
-    background: "var(--bg-elevated)",
+    background: "var(--bg-surface-hover)",
     border: "1px solid var(--border-color)",
     borderRadius: "var(--radius-sm)",
     padding: "3px 7px",

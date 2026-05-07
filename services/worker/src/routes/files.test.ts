@@ -349,6 +349,199 @@ describe("handleFiles — POST /files/text", () => {
   });
 });
 
+describe("handleFiles - POST /files/url", () => {
+  function responseWithUrl(body: BodyInit | null, url: string, init?: ResponseInit): Response {
+    const res = new Response(body, init);
+    Object.defineProperty(res, "url", { value: url });
+    return res;
+  }
+
+  function makeUrlFetchMock(options: {
+    existingSourceUrl?: boolean;
+    folders?: { path: string }[];
+    external?: (url: string) => Response | Promise<Response>;
+  }) {
+    const folders = options.folders ?? [{ path: "Resources/Web" }];
+    return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const calledUrl = String(input);
+      if (!calledUrl.startsWith("https://stub.supabase.co")) {
+        if (!options.external) return new Response("not mocked", { status: 404 });
+        return options.external(calledUrl);
+      }
+
+      if (calledUrl.includes("/rest/v1/files?source_url=")) {
+        return new Response(
+          JSON.stringify(options.existingSourceUrl ? [{ id: "existing", path: "old.md" }] : []),
+          { status: 200 },
+        );
+      }
+      if (calledUrl.includes("/rest/v1/folders?")) {
+        return new Response(JSON.stringify(folders), { status: 200 });
+      }
+      if (calledUrl.includes("/rest/v1/files?path=")) {
+        return new Response("[]", { status: 200 });
+      }
+      if (calledUrl.endsWith("/rest/v1/folders")) {
+        return new Response(init?.body ?? "[]", { status: 200 });
+      }
+      if (calledUrl.endsWith("/rest/v1/files")) {
+        const row = JSON.parse(String(init?.body ?? "{}"));
+        return new Response(JSON.stringify([{ id: "url-file-1", ...row }]), { status: 200 });
+      }
+      if (calledUrl.endsWith("/rest/v1/architect_jobs")) {
+        return new Response(JSON.stringify([{ id: "job-1" }]), { status: 200 });
+      }
+      return new Response("[]", { status: 200 });
+    });
+  }
+
+  it("rejects private network URLs before fetching", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files/url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: "http://127.0.0.1/admin" }),
+    });
+
+    const res = await handleFiles(req, env, new URL(req.url));
+
+    expect(res.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("imports a webpage as extracted text and chooses a matching existing folder", async () => {
+    const fetchMock = makeUrlFetchMock({
+      folders: [{ path: "Resources/Web" }, { path: "Projects/OpenBrain" }],
+      external: (calledUrl) => {
+        if (calledUrl !== "https://openbrain.dev/articles/project-intel") {
+          return new Response("not found", { status: 404 });
+        }
+        return responseWithUrl(
+          "<html><head><title>OpenBrain Project Notes</title></head><body><article><p>Useful project intelligence.</p></article></body></html>",
+          calledUrl,
+          { status: 200, headers: { "Content-Type": "text/html" } },
+        );
+      },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files/url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: "https://openbrain.dev/articles/project-intel" }),
+    });
+
+    const res = await handleFiles(req, env, new URL(req.url));
+
+    expect(res.status).toBe(201);
+    expect(env.VAULT_BUCKET.put).toHaveBeenCalledWith(
+      "Projects/OpenBrain/OpenBrain Project Notes.md",
+      expect.any(Uint8Array),
+      expect.objectContaining({ httpMetadata: { contentType: "text/markdown" } }),
+    );
+    const filesUpsert = fetchMock.mock.calls.find((call) =>
+      String(call[0]).endsWith("/rest/v1/files"),
+    );
+    expect(JSON.parse(String(filesUpsert?.[1]?.body))).toMatchObject({
+      path: "Projects/OpenBrain/OpenBrain Project Notes.md",
+      folder: "Projects/OpenBrain",
+      source_type: "webpage",
+      source_url: "https://openbrain.dev/articles/project-intel",
+      extraction_status: "extracted",
+      needs_wiki: true,
+    });
+  });
+
+  it("imports a YouTube URL without marking wiki work as pending", async () => {
+    const fetchMock = makeUrlFetchMock({
+      external: (calledUrl) => {
+        if (!calledUrl.startsWith("https://www.youtube.com/oembed?")) {
+          return new Response("not found", { status: 404 });
+        }
+        return new Response(JSON.stringify({ title: "Demo Video", author_name: "OpenBrain" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files/url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: "https://www.youtube.com/watch?v=abc123" }),
+    });
+
+    const res = await handleFiles(req, env, new URL(req.url));
+
+    expect(res.status).toBe(201);
+    const filesUpsert = fetchMock.mock.calls.find((call) =>
+      String(call[0]).endsWith("/rest/v1/files"),
+    );
+    expect(JSON.parse(String(filesUpsert?.[1]?.body))).toMatchObject({
+      path: "Resources/Web/Demo Video - OpenBrain.md",
+      source_type: "youtube",
+      source_url: "https://www.youtube.com/watch?v=abc123",
+      extraction_status: "no_text",
+      needs_wiki: false,
+    });
+  });
+
+  it("imports a PDF URL as a preserved source note without extracted text", async () => {
+    const fetchMock = makeUrlFetchMock({
+      external: (calledUrl) =>
+        responseWithUrl("%PDF-1.7", calledUrl, {
+          status: 200,
+          headers: { "Content-Type": "application/pdf" },
+        }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files/url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: "https://example.com/report.pdf" }),
+    });
+
+    const res = await handleFiles(req, env, new URL(req.url));
+
+    expect(res.status).toBe(201);
+    const filesUpsert = fetchMock.mock.calls.find((call) =>
+      String(call[0]).endsWith("/rest/v1/files"),
+    );
+    expect(JSON.parse(String(filesUpsert?.[1]?.body))).toMatchObject({
+      path: "Resources/Web/report.md",
+      source_type: "pdf",
+      source_url: "https://example.com/report.pdf",
+      extraction_status: "no_text",
+      needs_wiki: false,
+    });
+  });
+
+  it("rejects an already imported URL before fetching the remote source", async () => {
+    const fetchMock = makeUrlFetchMock({
+      existingSourceUrl: true,
+      external: () => new Response("should not fetch", { status: 500 }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files/url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: "https://example.com/dupe" }),
+    });
+
+    const res = await handleFiles(req, env, new URL(req.url));
+
+    expect(res.status).toBe(409);
+    expect(
+      fetchMock.mock.calls.some((call) => String(call[0]) === "https://example.com/dupe"),
+    ).toBe(false);
+  });
+});
+
 describe("parseFilesQuery", () => {
   it("defaults to select=* and order=updated_at.desc with no params", () => {
     const { params, error } = parseFilesQuery(new URLSearchParams());

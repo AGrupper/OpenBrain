@@ -1,6 +1,6 @@
 import { unzipSync } from "fflate";
 import type { Env } from "../app";
-import type { VaultFile } from "@openbrain/shared";
+import type { FileSourceType, VaultFile, VaultFolder } from "@openbrain/shared";
 import { ensureFolderRows } from "./folders";
 import { runLinkerForFile, runTaggerForFile, runWikiBuilderForFile } from "../jobs";
 
@@ -28,8 +28,14 @@ export const FILES_SELECT_WHITELIST = new Set([
   "needs_wiki",
   "text_content",
   "summary",
+  "source_type",
+  "source_url",
+  "extraction_status",
+  "extraction_error",
 ]);
 const FILES_MAX_LIMIT = 500;
+const DEFAULT_URL_FOLDER = "Resources/Web";
+const MAX_WEBPAGE_TEXT_CHARS = 80_000;
 const FILES_BOOL_FILTERS = [
   "needs_linking",
   "needs_tagging",
@@ -117,6 +123,74 @@ function hasUsableWikiText(text: string | null | undefined): boolean {
   return typeof text === "string" && text.trim().length > 0;
 }
 
+function validatePublicSourceUrl(input: string): URL | null {
+  let url: URL;
+  try {
+    url = new URL(input.trim());
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+  if (isBlockedHostname(url.hostname)) return null;
+  return url;
+}
+
+function isBlockedHostname(hostname: string): boolean {
+  const host = hostname.toLowerCase();
+  if (
+    host === "localhost" ||
+    host === "0.0.0.0" ||
+    host === "::1" ||
+    host === "[::1]" ||
+    host.endsWith(".local") ||
+    host.endsWith(".localhost")
+  ) {
+    return true;
+  }
+  if (host.includes(":")) return true;
+  if (/^127\./.test(host) || /^10\./.test(host) || /^169\.254\./.test(host)) return true;
+  const private172 = host.match(/^172\.(\d{1,2})\./);
+  if (private172) {
+    const octet = Number.parseInt(private172[1], 10);
+    if (octet >= 16 && octet <= 31) return true;
+  }
+  if (/^192\.168\./.test(host)) return true;
+  return false;
+}
+
+function sourceTypeForUrl(url: URL, contentType = ""): FileSourceType {
+  const host = url.hostname.toLowerCase();
+  const path = url.pathname.toLowerCase();
+  if (
+    host === "youtu.be" ||
+    host.endsWith(".youtube.com") ||
+    host === "youtube.com" ||
+    host.endsWith(".youtube-nocookie.com")
+  ) {
+    return "youtube";
+  }
+  if (contentType.includes("application/pdf") || path.endsWith(".pdf")) return "pdf";
+  return "webpage";
+}
+
+function titleFromUrl(url: URL): string {
+  const lastPath = decodeURIComponent(url.pathname.split("/").filter(Boolean).pop() ?? "");
+  return lastPath.replace(/\.[a-z0-9]+$/i, "").trim() || url.hostname;
+}
+
+function sanitizeTitleForPath(title: string): string {
+  const cleaned = title
+    .replace(/[<>:"/\\|?*]/g, "-")
+    .replace(/[\u0000-\u001f]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
+  return (cleaned || "Untitled URL").slice(0, 80);
+}
+
+function escapeMarkdown(text: string): string {
+  return text.replaceAll("\\", "\\\\").replaceAll("[", "\\[").replaceAll("]", "\\]");
+}
+
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -189,6 +263,37 @@ function docxXmlToMarkdown(xml: string): string | null {
   return paragraphs.join("\n\n") || null;
 }
 
+function htmlToText(html: string): { title: string | null; text: string | null } {
+  const title = decodeHtml(
+    (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) ?? [])[1]?.replace(/\s+/g, " ").trim() ?? "",
+  );
+  const withoutNoise = html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ");
+  const withBreaks = withoutNoise
+    .replace(/<\/(p|div|section|article|header|footer|li|h[1-6])>/gi, "\n")
+    .replace(/<br\s*\/?>/gi, "\n");
+  const text = decodeHtml(withBreaks.replace(/<[^>]+>/g, " "))
+    .split("\n")
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .join("\n\n")
+    .slice(0, MAX_WEBPAGE_TEXT_CHARS);
+  return { title: title || null, text: text || null };
+}
+
+function decodeHtml(input: string): string {
+  return input
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
 function db(env: Env) {
   const base = env.SUPABASE_URL;
   const key = env.SUPABASE_SERVICE_KEY;
@@ -246,6 +351,142 @@ function db(env: Env) {
   };
 }
 
+async function chooseUrlFolder(
+  env: Env,
+  title: string,
+  sourceUrl: string,
+  requestedFolder?: string | null,
+): Promise<string> {
+  if (requestedFolder) return requestedFolder;
+  let folders: Pick<VaultFolder, "path">[] = [];
+  try {
+    folders = (await db(env).query("folders", {
+      select: "path",
+      limit: "500",
+    })) as Pick<VaultFolder, "path">[];
+  } catch {
+    return DEFAULT_URL_FOLDER;
+  }
+
+  const haystack = `${title} ${sourceUrl}`.toLowerCase();
+  const candidates = folders
+    .map((folder) => folder.path)
+    .filter((path) => path && !["Projects", "Areas", "Resources", "Archive"].includes(path))
+    .filter((path) => {
+      const tokens = path
+        .split("/")
+        .flatMap((part) => part.split(/[\s_-]+/))
+        .map((part) => part.toLowerCase())
+        .filter((part) => part.length >= 4);
+      return tokens.some((token) => haystack.includes(token));
+    })
+    .sort((a, b) => b.length - a.length);
+  return candidates[0] ?? DEFAULT_URL_FOLDER;
+}
+
+async function uniqueMarkdownPath(env: Env, folder: string, title: string): Promise<string> {
+  const base = sanitizeTitleForPath(title).replace(/\.+$/g, "") || "Untitled URL";
+  for (let index = 0; index < 100; index += 1) {
+    const suffix = index === 0 ? "" : `-${index + 1}`;
+    const path = `${folder}/${base}${suffix}.md`;
+    const existing = (await db(env).query("files", {
+      path: `eq.${path}`,
+      select: "id",
+      limit: "1",
+    })) as Pick<VaultFile, "id">[];
+    if (!existing.length) return path;
+  }
+  return `${folder}/${base}-${Date.now()}.md`;
+}
+
+async function fetchYoutubeTitle(url: URL): Promise<string | null> {
+  const oembed = new URL("https://www.youtube.com/oembed");
+  oembed.searchParams.set("url", url.toString());
+  oembed.searchParams.set("format", "json");
+  const res = await fetch(oembed.toString(), {
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) return null;
+  const body = (await res.json()) as { title?: unknown; author_name?: unknown };
+  const title = typeof body.title === "string" ? body.title.trim() : "";
+  const author = typeof body.author_name === "string" ? body.author_name.trim() : "";
+  if (title && author) return `${title} - ${author}`;
+  return title || null;
+}
+
+async function buildUrlMarkdown(url: URL): Promise<{
+  sourceType: FileSourceType;
+  sourceUrl: string;
+  title: string;
+  content: string;
+  extractedText: string | null;
+  extractionStatus: "extracted" | "no_text";
+}> {
+  const initialType = sourceTypeForUrl(url);
+  if (initialType === "youtube") {
+    const title = (await fetchYoutubeTitle(url)) ?? titleFromUrl(url);
+    const content = `# ${title}\n\nSource: [${escapeMarkdown(url.toString())}](${url.toString()})\n\nYouTube transcript extraction is not available yet.`;
+    return {
+      sourceType: "youtube",
+      sourceUrl: url.toString(),
+      title,
+      content,
+      extractedText: null,
+      extractionStatus: "no_text",
+    };
+  }
+
+  const res = await fetch(url.toString(), {
+    headers: {
+      Accept: "text/html,application/pdf;q=0.9,*/*;q=0.8",
+      "User-Agent": "OpenBrain URL Ingestion",
+    },
+  });
+  const finalUrl = validatePublicSourceUrl(res.url);
+  if (!finalUrl) throw new Error("URL redirected to a blocked host");
+  if (!res.ok) throw new Error(`URL fetch failed: ${res.status}`);
+
+  const contentType = res.headers.get("Content-Type")?.toLowerCase() ?? "";
+  const sourceType = sourceTypeForUrl(finalUrl, contentType);
+  if (sourceType === "pdf") {
+    const title = titleFromUrl(finalUrl);
+    const content = `# ${title}\n\nSource: [${escapeMarkdown(finalUrl.toString())}](${finalUrl.toString()})\n\nPDF text extraction is not available yet.`;
+    return {
+      sourceType,
+      sourceUrl: finalUrl.toString(),
+      title,
+      content,
+      extractedText: null,
+      extractionStatus: "no_text",
+    };
+  }
+
+  const html = await res.text();
+  const { title: htmlTitle, text } = htmlToText(html);
+  const title = htmlTitle ?? titleFromUrl(finalUrl);
+  const content = `# ${title}\n\nSource: [${escapeMarkdown(finalUrl.toString())}](${finalUrl.toString()})\n\n${text ?? "No readable text was extracted."}`;
+  return {
+    sourceType: "webpage",
+    sourceUrl: finalUrl.toString(),
+    title,
+    content,
+    extractedText: text,
+    extractionStatus: text ? "extracted" : "no_text",
+  };
+}
+
+async function findFileBySourceUrl(
+  env: Env,
+  sourceUrl: string,
+): Promise<Pick<VaultFile, "id" | "path"> | null> {
+  const existing = (await db(env).query("files", {
+    source_url: `eq.${sourceUrl}`,
+    select: "id,path",
+    limit: "1",
+  })) as Pick<VaultFile, "id" | "path">[];
+  return existing[0] ?? null;
+}
+
 export async function handleFiles(
   request: Request,
   env: Env,
@@ -300,7 +541,77 @@ export async function handleFiles(
       return Response.json(rows);
     }
 
-    // POST /files/text — create a blank or text Markdown file directly in the cloud vault.
+    // POST /files/url - import a public URL as a Markdown source note.
+    if (method === "POST" && fileId === "url" && !sub) {
+      const body = (await request.json()) as { url?: unknown; folder?: unknown };
+      if (typeof body.url !== "string") return new Response("url is required", { status: 400 });
+
+      const sourceUrl = validatePublicSourceUrl(body.url);
+      if (!sourceUrl) {
+        return new Response("url must be a public http(s) URL", { status: 400 });
+      }
+
+      let requestedFolder: string | null = null;
+      if (typeof body.folder === "string" && body.folder.trim()) {
+        requestedFolder = normalizeFilePath(body.folder);
+        if (!requestedFolder) return new Response("folder is invalid", { status: 400 });
+      }
+
+      const duplicateBeforeFetch = await findFileBySourceUrl(env, sourceUrl.toString());
+      if (duplicateBeforeFetch) return new Response("URL already imported", { status: 409 });
+
+      let built: Awaited<ReturnType<typeof buildUrlMarkdown>>;
+      try {
+        built = await buildUrlMarkdown(sourceUrl);
+      } catch (err) {
+        return new Response(`URL import failed: ${String(err)}`, { status: 502 });
+      }
+      if (built.sourceUrl !== sourceUrl.toString()) {
+        const duplicateAfterRedirect = await findFileBySourceUrl(env, built.sourceUrl);
+        if (duplicateAfterRedirect) return new Response("URL already imported", { status: 409 });
+      }
+
+      const folder = await chooseUrlFolder(env, built.title, built.sourceUrl, requestedFolder);
+      const path = await uniqueMarkdownPath(env, folder, built.title);
+      const shouldBuildWiki =
+        built.extractionStatus === "extracted" && hasUsableWikiText(built.extractedText);
+      const bytes = new TextEncoder().encode(built.content);
+      const sha256 = await sha256Hex(bytes);
+
+      await ensureFolderRows(env, folder);
+      await env.VAULT_BUCKET.put(path, bytes, {
+        httpMetadata: { contentType: "text/markdown" },
+        sha256,
+      });
+      const rows = (await db(env).upsert("files", {
+        path,
+        size: bytes.byteLength,
+        sha256,
+        mime: "text/markdown",
+        folder,
+        text_content: built.content,
+        source_type: built.sourceType,
+        source_url: built.sourceUrl,
+        extraction_status: built.extractionStatus,
+        extraction_error: null,
+        updated_at: new Date().toISOString(),
+        needs_embedding: true,
+        needs_linking: true,
+        needs_tagging: true,
+        needs_wiki: shouldBuildWiki,
+      })) as VaultFile[];
+      if (rows[0]?.id) {
+        await db(env).upsert("architect_jobs", {
+          file_id: rows[0].id,
+          status: "pending",
+          updated_at: new Date().toISOString(),
+        });
+        kickArchitect(env, rows[0].id, ctx, { skipWiki: !shouldBuildWiki });
+      }
+      return Response.json(rows[0], { status: 201 });
+    }
+
+    // POST /files/text - create a blank or text Markdown file directly in the cloud vault.
     if (method === "POST" && fileId === "text" && !sub) {
       const body = (await request.json()) as { path?: string; content?: string };
       const path = body.path ? normalizeFilePath(body.path) : null;
@@ -333,6 +644,10 @@ export async function handleFiles(
         mime: "text/markdown",
         folder,
         text_content: content,
+        source_type: "file",
+        source_url: null,
+        extraction_status: shouldBuildWiki ? "extracted" : "no_text",
+        extraction_error: null,
         updated_at: new Date().toISOString(),
         needs_embedding: true,
         needs_linking: true,
@@ -372,6 +687,7 @@ export async function handleFiles(
       });
       const textContent = extractTextContent(meta.mime, meta.path, blob);
       const shouldBuildWiki = hasUsableWikiText(textContent);
+      const extractionStatus = shouldBuildWiki ? "extracted" : "no_text";
       const rows = (await db(env).upsert("files", {
         path: meta.path,
         size: meta.size,
@@ -379,6 +695,10 @@ export async function handleFiles(
         mime: meta.mime,
         folder,
         text_content: textContent,
+        source_type: "file",
+        source_url: null,
+        extraction_status: extractionStatus,
+        extraction_error: null,
         updated_at: new Date().toISOString(),
         needs_embedding: true,
         needs_linking: true,
@@ -474,6 +794,8 @@ export async function handleFiles(
             size: bytes.byteLength,
             sha256,
             mime: "text/markdown",
+            extraction_status: shouldBuildWiki ? "extracted" : "no_text",
+            extraction_error: null,
             needs_embedding: true,
             needs_linking: true,
             needs_tagging: true,
