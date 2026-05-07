@@ -1,4 +1,5 @@
 import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import { open as openExternal } from "@tauri-apps/plugin-shell";
 import ReactMarkdown from "react-markdown";
 import {
   type Link,
@@ -197,6 +198,20 @@ export function ListView({
     }
   };
 
+  const openSourceUrl = async () => {
+    const sourceUrl = selectedFile?.source_url;
+    if (!sourceUrl) return;
+    try {
+      const parsed = new URL(sourceUrl);
+      if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+        throw new Error("Only http(s) source URLs can be opened.");
+      }
+      await openExternal(sourceUrl);
+    } catch (e) {
+      window.alert(`Open source failed: ${String(e)}`);
+    }
+  };
+
   const runProcessingNow = async () => {
     if (!selectedFile) return;
     setProcessingNow(true);
@@ -334,7 +349,12 @@ export function ListView({
               {new Date(selectedFile.updated_at).toLocaleDateString()}
             </div>
             {selectedFile.source_url && (
-              <div style={styles.sourceMeta}>Source URL: {selectedFile.source_url}</div>
+              <div style={styles.sourceMeta}>
+                <span style={styles.sourceUrlText}>Source URL: {selectedFile.source_url}</span>
+                <button className="btn-action" onClick={() => void openSourceUrl()}>
+                  Open source
+                </button>
+              </div>
             )}
             {selectedFile.tags && selectedFile.tags.length > 0 && (
               <div style={styles.tags}>
@@ -1076,6 +1096,14 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     marginTop: "-8px",
     marginBottom: "var(--spacing-4)",
+    display: "flex",
+    alignItems: "center",
+    gap: "var(--spacing-2)",
+    flexWrap: "wrap",
+  },
+  sourceUrlText: {
+    minWidth: 0,
+    flex: 1,
     overflowWrap: "anywhere",
   },
   tags: { display: "flex", gap: 6, flexWrap: "wrap", marginBottom: "var(--spacing-4)" },

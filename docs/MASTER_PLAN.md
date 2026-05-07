@@ -160,8 +160,8 @@ The graph wiki answers: "What does OpenBrain understand?"
   `no_text` extraction state until transcript/PDF extraction is added.
 - Done: URL imports choose a relevant existing folder when the title/URL matches folder tokens,
   otherwise they fall back to `Resources/Web`.
-- Done: desktop List can add URLs from the import bar and shows source URL plus truthful extraction
-  state.
+- Done: desktop List can add URLs from the import bar, shows source URL plus truthful extraction
+  state, and opens source URLs in the system browser.
 - Next manual step: apply `infra/supabase/migrations/007_url_ingestion.sql` in Supabase, reload the
   PostgREST schema, restart Worker/Desktop, and smoke webpage, PDF, and YouTube imports.
 - Later: Notion access needs a separate authenticated connector/integration design, not the public

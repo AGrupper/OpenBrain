@@ -151,7 +151,8 @@ session so the next session can start from repo truth instead of chat history.
   - PDF and YouTube imports are preserved as source notes with `extraction_status=no_text` and no
     fake wiki-pending work.
   - URL imports match existing folder tokens before falling back to `Resources/Web`.
-  - Desktop has an import-bar URL field and shows source URL/extraction state in List.
+  - Desktop has an import-bar URL field, shows source URL/extraction state in List, and opens source
+    URLs in the system browser.
 - Notion access is intentionally deferred to a separate authenticated connector/integration slice.
 
 ## Verified
