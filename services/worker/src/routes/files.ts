@@ -113,6 +113,10 @@ function isMarkdownPath(path: string): boolean {
   return lower.endsWith(".md") || lower.endsWith(".markdown");
 }
 
+function hasUsableWikiText(text: string | null | undefined): boolean {
+  return typeof text === "string" && text.trim().length > 0;
+}
+
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -313,6 +317,7 @@ export async function handleFiles(
       if (existing.length) return new Response("File already exists", { status: 409 });
 
       const content = body.content ?? "";
+      const shouldBuildWiki = hasUsableWikiText(content);
       const bytes = new TextEncoder().encode(content);
       const sha256 = await sha256Hex(bytes);
       const folder = folderFromPath(path);
@@ -332,7 +337,7 @@ export async function handleFiles(
         needs_embedding: true,
         needs_linking: true,
         needs_tagging: true,
-        needs_wiki: true,
+        needs_wiki: shouldBuildWiki,
       })) as VaultFile[];
       if (rows[0]?.id) {
         await db(env).upsert("architect_jobs", {
@@ -340,7 +345,7 @@ export async function handleFiles(
           status: "pending",
           updated_at: new Date().toISOString(),
         });
-        kickArchitect(env, rows[0].id, ctx);
+        kickArchitect(env, rows[0].id, ctx, { skipWiki: !shouldBuildWiki });
       }
       return Response.json(rows[0], { status: 201 });
     }
@@ -366,6 +371,7 @@ export async function handleFiles(
         sha256: meta.sha256,
       });
       const textContent = extractTextContent(meta.mime, meta.path, blob);
+      const shouldBuildWiki = hasUsableWikiText(textContent);
       const rows = (await db(env).upsert("files", {
         path: meta.path,
         size: meta.size,
@@ -377,7 +383,7 @@ export async function handleFiles(
         needs_embedding: true,
         needs_linking: true,
         needs_tagging: true,
-        needs_wiki: true,
+        needs_wiki: shouldBuildWiki,
       })) as VaultFile[];
       if (rows[0]?.id) {
         await db(env).upsert("architect_jobs", {
@@ -385,7 +391,7 @@ export async function handleFiles(
           status: "pending",
           updated_at: new Date().toISOString(),
         });
-        kickArchitect(env, rows[0].id, ctx);
+        kickArchitect(env, rows[0].id, ctx, { skipWiki: !shouldBuildWiki });
       }
       return Response.json(rows[0], { status: 201 });
     }
@@ -423,12 +429,13 @@ export async function handleFiles(
       const hasPathChange = typeof body.path === "string";
       const hasTextChange = typeof body.text_content === "string";
       let pathChanged = false;
+      let shouldBuildWikiAfterChange = true;
 
       if (hasPathChange || hasTextChange) {
         const current = (await db(env).query("files", {
           id: `eq.${fileId}`,
-          select: "path",
-        })) as { path: string }[];
+          select: "path,text_content",
+        })) as { path: string; text_content?: string | null }[];
         if (!current.length) return new Response("Not found", { status: 404 });
         const oldPath = current[0].path;
         const newPath = hasPathChange ? normalizeFilePath(body.path as string) : oldPath;
@@ -451,6 +458,8 @@ export async function handleFiles(
 
         if (hasTextChange) {
           const content = body.text_content as string;
+          const shouldBuildWiki = hasUsableWikiText(content);
+          shouldBuildWikiAfterChange = shouldBuildWiki;
           const bytes = new TextEncoder().encode(content);
           const sha256 = await sha256Hex(bytes);
           await env.VAULT_BUCKET.put(newPath, bytes, {
@@ -468,7 +477,7 @@ export async function handleFiles(
             needs_embedding: true,
             needs_linking: true,
             needs_tagging: true,
-            needs_wiki: true,
+            needs_wiki: shouldBuildWiki,
           });
         } else if (pathChanged) {
           const obj = await env.VAULT_BUCKET.get(oldPath);
@@ -478,7 +487,8 @@ export async function handleFiles(
             });
             await env.VAULT_BUCKET.delete(oldPath);
           }
-          Object.assign(body, { needs_wiki: true });
+          shouldBuildWikiAfterChange = hasUsableWikiText(current[0].text_content);
+          Object.assign(body, { needs_wiki: shouldBuildWikiAfterChange });
         }
       }
       const rows = await db(env).patch("files", fileId, {
@@ -493,10 +503,11 @@ export async function handleFiles(
           updated_at: new Date().toISOString(),
         });
         const runWikiNow = url.searchParams.get("run_wiki") === "true";
-        if (runWikiNow) {
+        const canRunWiki = shouldBuildWikiAfterChange;
+        if (runWikiNow && canRunWiki) {
           await runWikiBuilderForFile(env, fileId);
         }
-        kickArchitect(env, fileId, ctx, { skipWiki: runWikiNow });
+        kickArchitect(env, fileId, ctx, { skipWiki: runWikiNow || !canRunWiki });
       }
 
       return Response.json(rows);

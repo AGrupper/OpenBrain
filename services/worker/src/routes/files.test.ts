@@ -159,6 +159,10 @@ describe("handleFiles — PUT /files/upload", () => {
       expect.any(ArrayBuffer),
       expect.objectContaining({ sha256: "deadbeef" }),
     );
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+      text_content: body,
+      needs_wiki: true,
+    });
     expect(fetchMock).toHaveBeenCalled();
   });
 
@@ -184,6 +188,29 @@ describe("handleFiles — PUT /files/upload", () => {
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
       folder: "Projects/OpenBrain",
       text_content: body,
+      needs_wiki: true,
+    });
+  });
+
+  it("does not mark wiki pending when upload has no extracted text", async () => {
+    const env = makeEnv();
+    const body = "binary-ish";
+    const req = makeRequest("https://api.openbrain.dev/files/upload", {
+      method: "PUT",
+      headers: {
+        "X-File-Path": "archive.bin",
+        "X-File-Sha256": "deadbeef",
+        "X-File-Size": String(body.length),
+        "Content-Type": "application/octet-stream",
+      },
+      body,
+    });
+    const res = await handleFiles(req, env, new URL(req.url));
+    expect(res.status).toBe(201);
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toMatchObject({
+      path: "archive.bin",
+      text_content: null,
+      needs_wiki: false,
     });
   });
 });
@@ -246,6 +273,47 @@ describe("handleFiles — POST /files/text", () => {
     expect(JSON.parse(fetchMock.mock.calls[3][1].body)).toMatchObject({
       file_id: "file-1",
       status: "pending",
+    });
+  });
+
+  it("does not mark wiki pending for an empty markdown file", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("[]", { status: 200 }))
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            {
+              id: "file-1",
+              path: "empty.md",
+              size: 0,
+              sha256: "hash",
+              mime: "text/markdown",
+              updated_at: "now",
+            },
+          ]),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ id: "job-1" }]), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files/text", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: "empty.md", content: "" }),
+    });
+    const res = await handleFiles(req, env, new URL(req.url));
+
+    expect(res.status).toBe(201);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
+      path: "empty.md",
+      text_content: "",
+      needs_embedding: true,
+      needs_linking: true,
+      needs_tagging: true,
+      needs_wiki: false,
     });
   });
 
@@ -540,10 +608,45 @@ describe("handleFiles — PATCH /files/:id with Markdown text_content", () => {
       needs_embedding: true,
       needs_linking: true,
       needs_tagging: true,
+      needs_wiki: true,
     });
     expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toMatchObject({
       file_id: "abc",
       status: "pending",
+    });
+  });
+
+  it("clears wiki pending for whitespace-only Markdown text", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([{ path: "Resources/notes.md" }]), { status: 200 }),
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([{ id: "abc", path: "Resources/notes.md", text_content: "   " }]),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ id: "job-1" }]), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files/abc", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text_content: "   " }),
+    });
+
+    const res = await handleFiles(req, env, new URL(req.url));
+
+    expect(res.status).toBe(200);
+    const patchBody = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(patchBody).toMatchObject({
+      text_content: "   ",
+      needs_embedding: true,
+      needs_linking: true,
+      needs_tagging: true,
+      needs_wiki: false,
     });
   });
 

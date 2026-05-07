@@ -749,7 +749,17 @@ function isReadableText(file: VaultFile): boolean {
 }
 
 function hasExtractedText(file: VaultFile): boolean {
-  return typeof file.text_content === "string" && file.text_content.length > 0;
+  return typeof file.text_content === "string" && file.text_content.trim().length > 0;
+}
+
+function textAvailabilityLabel(file: VaultFile): string {
+  if (hasExtractedText(file)) return "Text extracted";
+  if (typeof file.text_content === "string") return "Empty text";
+  return "No text extracted";
+}
+
+function canBuildWiki(file: VaultFile): boolean {
+  return hasExtractedText(file);
 }
 
 function pendingProcessingLabels(file: VaultFile): string[] {
@@ -759,17 +769,20 @@ function pendingProcessingLabels(file: VaultFile): string[] {
 }
 
 function processingSteps(file: VaultFile): Array<{ key: string; label: string; pending: boolean }> {
-  return [
+  const steps = [
     {
       key: "text",
-      label: hasExtractedText(file) ? "Text extracted" : "Original stored",
+      label: textAvailabilityLabel(file),
       pending: false,
     },
     { key: "embedding", label: "Embedding", pending: Boolean(file.needs_embedding) },
     { key: "links", label: "Links", pending: Boolean(file.needs_linking) },
     { key: "tags", label: "Tags", pending: Boolean(file.needs_tagging) },
-    { key: "wiki", label: "Wiki", pending: Boolean(file.needs_wiki) },
   ];
+  if (canBuildWiki(file)) {
+    steps.push({ key: "wiki", label: "Wiki", pending: Boolean(file.needs_wiki) });
+  }
+  return steps;
 }
 
 function formatSize(bytes: number): string {
