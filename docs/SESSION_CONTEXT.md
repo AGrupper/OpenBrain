@@ -137,6 +137,8 @@ session so the next session can start from repo truth instead of chat history.
 - Milestone 5 has started with a conservative processing-state UI slice: the List view now surfaces
   existing `needs_embedding`, `needs_linking`, `needs_tagging`, and `needs_wiki` flags without new
   schema or route changes.
+- The follow-up Milestone 5 slice now keeps empty/no-text files out of wiki-pending state and shows
+  original storage separately from text extraction result in the List processing panel.
 
 ## Verified
 
@@ -161,6 +163,11 @@ Last verified on 2026-05-05 after the draft-visible wiki implementation:
   and one hidden source node in storage.
 - After the Milestone 5 processing-state UI slice, `npm.cmd run typecheck`, `npm.cmd run lint`, and
   `npm.cmd run format:check` passed before full final verification.
+- On 2026-05-07 after the no-text processing fix and extraction-status UI update:
+  `npm.cmd test -- services/worker/src/routes/files.test.ts`, `npm.cmd run typecheck`,
+  `npm.cmd run lint`, `npm.cmd run format:check`, `npm.cmd test`, and
+  `npm.cmd -w apps/desktop run build` passed. Vitest and desktop build needed outside-sandbox
+  reruns after the known Windows `spawn EPERM`.
 
 Earlier verified on 2026-05-05 after the no-op Architect suggestion fix:
 
@@ -289,8 +296,8 @@ Immediate targets:
    - Do not delete disposable smoke notes/folders unless the user explicitly approves cleanup.
 3. Continue Milestone 5 broad ingestion:
    - Keep the next slice conservative unless the user approves a migration.
-   - Candidate next step: add explicit upload/extraction status details for docx/text imports and
-     then plan URL ingestion separately.
+   - Next likely step: decide the URL ingestion policy and minimal processing-state model before
+     adding URL import code. Stop for explicit approval if this requires a schema migration.
 4. After publish, verify `git status -sb` before starting new work.
 
 ## Guardrails

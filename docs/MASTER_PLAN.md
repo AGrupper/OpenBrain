@@ -151,6 +151,8 @@ The graph wiki answers: "What does OpenBrain understand?"
   processing flags were confirmed before adding new ingestion sources.
 - Done: the raw List view now shows processing state from existing file flags, including pending
   embedding, linking, tagging, and wiki work, without adding schema or route changes.
+- Done: empty/no-text files no longer get marked as wiki-pending, and the List processing panel now
+  separates original storage from text extraction result.
 - Accept local files and arbitrary allowed URLs.
 - Store metadata, extracted text/transcripts, summaries, and processing status.
 - Support webpages, PDFs, images, audio, video, and YouTube where extraction is allowed.
