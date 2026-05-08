@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { ArchitectChat } from "../features/architect-chat/ArchitectChat";
@@ -29,9 +29,10 @@ export default function App() {
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(() => loadTheme());
+  const refreshTimers = useRef<number[]>([]);
 
-  const loadFiles = useCallback(() => {
-    setLoading(true);
+  const loadFiles = useCallback((options?: { quiet?: boolean }) => {
+    if (!options?.quiet) setLoading(true);
     Promise.all([api.files.list(), api.folders.list()])
       .then(([nextFiles, nextFolders]) => {
         setFiles(nextFiles);
@@ -41,14 +42,31 @@ export default function App() {
         );
       })
       .catch((e) => setError(String(e)))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!options?.quiet) setLoading(false);
+      });
   }, []);
+
+  const refreshAfterProcessingChange = useCallback(() => {
+    for (const timer of refreshTimers.current) window.clearTimeout(timer);
+    loadFiles({ quiet: true });
+    refreshTimers.current = [1500, 4000, 8000, 15000].map((delay) =>
+      window.setTimeout(() => loadFiles({ quiet: true }), delay),
+    );
+  }, [loadFiles]);
 
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
 
   useEffect(() => loadFiles(), [loadFiles]);
+
+  useEffect(
+    () => () => {
+      for (const timer of refreshTimers.current) window.clearTimeout(timer);
+    },
+    [],
+  );
 
   const handleAddFiles = async (targetFolder?: string | null) => {
     const selected = await openDialog({
@@ -69,7 +87,7 @@ export default function App() {
         remoteFolder: targetFolder ?? PARA_DEFAULT_ROOT,
       });
       setImportStatus(formatImportSummary(summary));
-      loadFiles();
+      refreshAfterProcessingChange();
     } catch (e) {
       setImportStatus(null);
       setImportError(String(e));
@@ -84,7 +102,7 @@ export default function App() {
       setImportStatus(`Imported URL: ${file.path}`);
       setSelectedFile(file);
       setView("list");
-      loadFiles();
+      refreshAfterProcessingChange();
     } catch (e) {
       setImportStatus(null);
       setImportError(String(e));
@@ -122,7 +140,7 @@ export default function App() {
             folders={folders}
             selectedFile={selectedFile}
             onSelect={setSelectedFile}
-            onChange={loadFiles}
+            onChange={refreshAfterProcessingChange}
             onImportFiles={handleAddFiles}
           />
         )}

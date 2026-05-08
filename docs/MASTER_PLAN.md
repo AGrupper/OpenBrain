@@ -165,6 +165,8 @@ The graph wiki answers: "What does OpenBrain understand?"
   state, and opens source URLs in the system browser.
 - Done: desktop URL import now exposes an `Auto place`/folder destination menu, while keeping
   automatic relevant-folder matching as the default.
+- Done: desktop quietly refreshes the vault for a short window after imports and saves so processing
+  badges can clear as background jobs finish.
 - Done: applied `infra/supabase/migrations/007_url_ingestion.sql` in Supabase and smoked URL
   ingestion against the local Worker on 2026-05-08. Webpage import generated wiki concepts with
   citations, PDF/YouTube imports stayed honest `no_text` sources, private URLs were rejected, and

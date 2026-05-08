@@ -215,6 +215,8 @@ Last verified on 2026-05-05 after the draft-visible wiki implementation:
   `npm.cmd run format:check`, `npm.cmd -w apps/desktop run build`, and the outside-sandbox focused
   route test passed with 54 tests. Live smoke imported `https://example.com/` into
   `Projects/OpenBrain/Example Domain.md` with `extraction_status=extracted`.
+- The desktop now performs a short quiet refresh window after imports and saves so processing badges
+  can clear after background jobs without showing the full loading screen.
 
 Earlier verified on 2026-05-05 after the no-op Architect suggestion fix:
 
