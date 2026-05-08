@@ -156,8 +156,9 @@ The graph wiki answers: "What does OpenBrain understand?"
 - Done: added migration `007_url_ingestion.sql` for URL source metadata:
   `files.source_type`, `source_url`, `extraction_status`, and `extraction_error`.
 - Done: added Worker `POST /files/url` for public webpages, PDFs, and YouTube links. Webpages
-  extract readable HTML text; PDFs and YouTube links are preserved as source notes with honest
-  `no_text` extraction state until transcript/PDF extraction is added.
+  extract readable HTML text; PDFs now get bounded best-effort text extraction from plain and
+  Flate-compressed text streams; YouTube links are preserved as source notes unless public captions
+  are available.
 - Done: URL imports choose a relevant existing folder when the title/URL matches folder tokens,
   otherwise they fall back to `Resources/Web`.
 - Done: desktop List can add URLs from the import bar, shows source URL plus truthful extraction
@@ -169,8 +170,10 @@ The graph wiki answers: "What does OpenBrain understand?"
 - Done: YouTube URL ingestion now attempts to read public caption tracks and stores transcript text
   when captions are exposed; it still falls back to honest `no_text` state when no public transcript
   is available.
-- Next implementation step: add richer extraction for PDFs, or design the Notion connector if Notion
-  becomes the priority.
+- Done: PDF URL and upload ingestion now attempts safe local extraction without a PDF worker. Scanned,
+  encrypted, image-only, or unsupported PDFs still fall back to honest `no_text` state.
+- Next implementation step: either improve PDF coverage with an extraction service/OCR decision, or
+  design the Notion connector if Notion becomes the priority.
 - Later: Notion access needs a separate authenticated connector/integration design, not the public
   URL ingestion route.
 - Accept local files and arbitrary allowed URLs.

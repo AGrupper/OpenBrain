@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, vi, type Mock } from "vitest";
+import { strToU8, zlibSync } from "fflate";
 import {
   handleFiles,
   readUploadHeaders,
@@ -356,6 +357,58 @@ describe("handleFiles - POST /files/url", () => {
     return res;
   }
 
+  function makeSimplePdf(text: string): string {
+    const stream = `BT /F1 24 Tf 40 100 Td (${text}) Tj ET`;
+    return makePdfWithStream(stream, "");
+  }
+
+  function makeCompressedPdf(text: string): Uint8Array {
+    const stream = `BT /F1 24 Tf 40 100 Td (${text}) Tj ET`;
+    const compressed = zlibSync(strToU8(stream));
+    return concatBytes(
+      strToU8(
+        `%PDF-1.1\n1 0 obj\n<< /Filter /FlateDecode /Length ${compressed.length} >>\nstream\n`,
+      ),
+      compressed,
+      strToU8("\nendstream\nendobj\n%%EOF"),
+    );
+  }
+
+  function makePdfWithStream(stream: string, streamOptions: string): string {
+    const objects = [
+      "<< /Type /Catalog /Pages 2 0 R >>",
+      "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+      "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+      `<< ${streamOptions}/Length ${stream.length} >>\nstream\n${stream}\nendstream`,
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ];
+    let pdf = "%PDF-1.1\n";
+    const offsets = [0];
+    objects.forEach((object, index) => {
+      offsets.push(pdf.length);
+      pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+    });
+    const xrefStart = pdf.length;
+    pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+    pdf += offsets
+      .slice(1)
+      .map((offset) => `${String(offset).padStart(10, "0")} 00000 n \n`)
+      .join("");
+    pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF`;
+    return pdf;
+  }
+
+  function concatBytes(...parts: Uint8Array[]): Uint8Array {
+    const length = parts.reduce((sum, part) => sum + part.length, 0);
+    const output = new Uint8Array(length);
+    let offset = 0;
+    for (const part of parts) {
+      output.set(part, offset);
+      offset += part.length;
+    }
+    return output;
+  }
+
   function makeUrlFetchMock(options: {
     existingSourceUrl?: boolean;
     folders?: { path: string }[];
@@ -606,6 +659,70 @@ describe("handleFiles - POST /files/url", () => {
       source_url: "https://example.com/report.pdf",
       extraction_status: "no_text",
       needs_wiki: false,
+    });
+  });
+
+  it("imports extracted PDF text when readable text is available", async () => {
+    const fetchMock = makeUrlFetchMock({
+      external: (calledUrl) =>
+        responseWithUrl(makeSimplePdf("Hello PDF smoke"), calledUrl, {
+          status: 200,
+          headers: { "Content-Type": "application/pdf" },
+        }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files/url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: "https://example.com/readable.pdf" }),
+    });
+
+    const res = await handleFiles(req, env, new URL(req.url));
+
+    expect(res.status).toBe(201);
+    const filesUpsert = fetchMock.mock.calls.find((call) =>
+      String(call[0]).endsWith("/rest/v1/files"),
+    );
+    expect(JSON.parse(String(filesUpsert?.[1]?.body))).toMatchObject({
+      path: "Resources/Web/readable.md",
+      source_type: "pdf",
+      source_url: "https://example.com/readable.pdf",
+      extraction_status: "extracted",
+      needs_wiki: true,
+      text_content: expect.stringContaining("Hello PDF smoke"),
+    });
+  });
+
+  it("imports extracted PDF text from Flate-compressed streams", async () => {
+    const fetchMock = makeUrlFetchMock({
+      external: (calledUrl) =>
+        responseWithUrl(makeCompressedPdf("Compressed PDF smoke"), calledUrl, {
+          status: 200,
+          headers: { "Content-Type": "application/pdf" },
+        }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files/url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: "https://example.com/compressed.pdf" }),
+    });
+
+    const res = await handleFiles(req, env, new URL(req.url));
+
+    expect(res.status).toBe(201);
+    const filesUpsert = fetchMock.mock.calls.find((call) =>
+      String(call[0]).endsWith("/rest/v1/files"),
+    );
+    expect(JSON.parse(String(filesUpsert?.[1]?.body))).toMatchObject({
+      path: "Resources/Web/compressed.md",
+      source_type: "pdf",
+      source_url: "https://example.com/compressed.pdf",
+      extraction_status: "extracted",
+      needs_wiki: true,
+      text_content: expect.stringContaining("Compressed PDF smoke"),
     });
   });
 

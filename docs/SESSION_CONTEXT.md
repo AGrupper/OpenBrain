@@ -148,8 +148,10 @@ session so the next session can start from repo truth instead of chat history.
   - `POST /files/url` validates public `http(s)` URLs, blocks local/private hosts and redirects,
     imports the URL as a Markdown source note, stores source metadata, and queues Architect work.
   - Webpage imports extract readable HTML text and can generate wiki drafts.
-  - PDF and YouTube imports are preserved as source notes with `extraction_status=no_text` and no
-    fake wiki-pending work.
+  - PDF imports attempt bounded best-effort extraction from plain and Flate-compressed text streams;
+    unsupported, scanned, encrypted, or image-only PDFs fall back to `extraction_status=no_text`.
+  - YouTube imports attempt public caption-track extraction and otherwise fall back to
+    `extraction_status=no_text`.
   - URL imports match existing folder tokens before falling back to `Resources/Web`.
   - Desktop has an import-bar URL field, shows source URL/extraction state in List, and opens source
     URLs in the system browser.
@@ -201,6 +203,13 @@ Last verified on 2026-05-05 after the draft-visible wiki implementation:
   public timed-text metadata and stores transcript text when captions are exposed. A live Rick
   Astley URL smoke still returned `no_text`, so the fallback path is confirmed; a caption-positive
   live smoke is still useful when a known public-caption URL is available.
+- The follow-up PDF extraction slice avoids PDF.js because it wedged the local Worker runtime. The
+  committed path is a bounded in-Worker extractor for plain and Flate-compressed PDF text streams.
+  `npm.cmd run typecheck`, `npm.cmd run lint`, `npm.cmd run format:check`, `npm.cmd test`, and
+  `npm.cmd -w apps/desktop run build` passed; Vitest/build ran outside the sandbox after the known
+  Windows spawn restriction. Live smoke against the W3 dummy PDF returned quickly as
+  `source_type=pdf`, `extraction_status=no_text`, `needs_wiki=false`, and the Worker remained
+  responsive afterward, confirming the route no longer hangs when extraction cannot read useful text.
 
 Earlier verified on 2026-05-05 after the no-op Architect suggestion fix:
 
@@ -328,8 +337,8 @@ Immediate targets:
      suggested folder is actually correct.
    - Do not delete disposable smoke notes/folders unless the user explicitly approves cleanup.
 3. Continue Milestone 5 broad ingestion:
-   - Next implementation slice after URL smoke: PDF text extraction, or Notion connector planning if
-     the user prioritizes Notion.
+   - Next implementation slice after URL/PDF smoke: Notion connector planning, URL ingestion polish,
+     or a deliberate extraction-service/OCR decision for harder PDFs.
    - Leave the disposable URL smoke files in the vault unless the user explicitly approves cleanup.
 4. After publish, verify `git status -sb` before starting new work.
 

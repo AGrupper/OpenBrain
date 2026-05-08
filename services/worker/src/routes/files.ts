@@ -1,4 +1,4 @@
-import { unzipSync } from "fflate";
+import { decompressSync, unzipSync } from "fflate";
 import type { Env } from "../app";
 import type { FileSourceType, VaultFile, VaultFolder } from "@openbrain/shared";
 import { ensureFolderRows } from "./folders";
@@ -36,6 +36,7 @@ export const FILES_SELECT_WHITELIST = new Set([
 const FILES_MAX_LIMIT = 500;
 const DEFAULT_URL_FOLDER = "Resources/Web";
 const MAX_WEBPAGE_TEXT_CHARS = 80_000;
+const MAX_PDF_SCAN_BYTES = 5 * 1024 * 1024;
 const FILES_BOOL_FILTERS = [
   "needs_linking",
   "needs_tagging",
@@ -205,7 +206,11 @@ async function sha256Hex(bytes: Uint8Array): Promise<string> {
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-function extractTextContent(mime: string, path: string, blob: ArrayBuffer): string | null {
+async function extractTextContent(
+  mime: string,
+  path: string,
+  blob: ArrayBuffer,
+): Promise<string | null> {
   const lowerPath = path.toLowerCase();
   if (
     mime.startsWith("text/") ||
@@ -215,6 +220,9 @@ function extractTextContent(mime: string, path: string, blob: ArrayBuffer): stri
   ) {
     return new TextDecoder().decode(blob);
   }
+  if (lowerPath.endsWith(".pdf") || mime === "application/pdf") {
+    return extractPdfText(blob);
+  }
   if (
     lowerPath.endsWith(".docx") ||
     mime === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -222,6 +230,154 @@ function extractTextContent(mime: string, path: string, blob: ArrayBuffer): stri
     return extractDocxText(blob);
   }
   return null;
+}
+
+function extractPdfText(blob: ArrayBuffer): string | null {
+  try {
+    const bytes = new Uint8Array(blob.slice(0, MAX_PDF_SCAN_BYTES));
+    const pdf = bytesToBinaryString(bytes);
+    const parts: string[] = [];
+    const streamPattern = /(\d+\s+\d+\s+obj[\s\S]*?)stream\r?\n([\s\S]*?)\r?\nendstream/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = streamPattern.exec(pdf))) {
+      const streamText = decodePdfStream(match[1] ?? "", match[2] ?? "");
+      if (!streamText) continue;
+      parts.push(...extractPdfStringsFromTextBlocks(streamText));
+      if (parts.join(" ").length >= MAX_WEBPAGE_TEXT_CHARS) break;
+    }
+
+    const text = parts
+      .join(" ")
+      .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .slice(0, MAX_WEBPAGE_TEXT_CHARS);
+    return text || null;
+  } catch {
+    return null;
+  }
+}
+
+function decodePdfStream(dictionary: string, stream: string): string | null {
+  try {
+    let bytes = binaryStringToBytes(stream);
+    if (/\/Filter\s*(?:\/FlateDecode|\[[^\]]*\/FlateDecode)/.test(dictionary)) {
+      bytes = decompressSync(bytes);
+    }
+    return bytesToBinaryString(bytes);
+  } catch {
+    return null;
+  }
+}
+
+function extractPdfStringsFromTextBlocks(stream: string): string[] {
+  const blocks = stream.match(/BT[\s\S]*?ET/g) ?? [];
+  const strings: string[] = [];
+  for (const block of blocks) {
+    const stringPattern = /\(((?:\\.|[^\\)])*)\)|<([0-9a-fA-F\s]+)>/g;
+    let match: RegExpExecArray | null;
+    while ((match = stringPattern.exec(block))) {
+      const text =
+        match[1] !== undefined
+          ? decodePdfLiteralString(match[1])
+          : decodePdfHexString(match[2] ?? "");
+      const cleaned = text.replace(/\s+/g, " ").trim();
+      if (cleaned) strings.push(cleaned);
+    }
+  }
+  return strings;
+}
+
+function decodePdfLiteralString(value: string): string {
+  let decoded = "";
+  for (let i = 0; i < value.length; i += 1) {
+    const char = value[i];
+    if (char !== "\\") {
+      decoded += char;
+      continue;
+    }
+
+    const next = value[++i];
+    if (next === undefined) break;
+    switch (next) {
+      case "n":
+        decoded += "\n";
+        break;
+      case "r":
+        decoded += "\r";
+        break;
+      case "t":
+        decoded += "\t";
+        break;
+      case "b":
+        decoded += "\b";
+        break;
+      case "f":
+        decoded += "\f";
+        break;
+      case "(":
+      case ")":
+      case "\\":
+        decoded += next;
+        break;
+      case "\r":
+        if (value[i + 1] === "\n") i += 1;
+        break;
+      case "\n":
+        break;
+      default: {
+        if (/[0-7]/.test(next)) {
+          let octal = next;
+          for (let j = 0; j < 2 && /[0-7]/.test(value[i + 1] ?? ""); j += 1) {
+            octal += value[++i];
+          }
+          decoded += String.fromCharCode(parseInt(octal, 8));
+        } else {
+          decoded += next;
+        }
+      }
+    }
+  }
+  return decoded;
+}
+
+function decodePdfHexString(value: string): string {
+  const normalized = value.replace(/\s+/g, "");
+  const padded = normalized.length % 2 === 0 ? normalized : `${normalized}0`;
+  const bytes = new Uint8Array(padded.length / 2);
+  for (let i = 0; i < padded.length; i += 2) {
+    bytes[i / 2] = parseInt(padded.slice(i, i + 2), 16);
+  }
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return decodeUtf16(bytes.subarray(2), false);
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return decodeUtf16(bytes.subarray(2), true);
+  return new TextDecoder().decode(bytes);
+}
+
+function decodeUtf16(bytes: Uint8Array, littleEndian: boolean): string {
+  let decoded = "";
+  for (let i = 0; i + 1 < bytes.length; i += 2) {
+    const code = littleEndian ? bytes[i] | (bytes[i + 1] << 8) : (bytes[i] << 8) | bytes[i + 1];
+    decoded += String.fromCharCode(code);
+  }
+  return decoded;
+}
+
+function binaryStringToBytes(value: string): Uint8Array {
+  const bytes = new Uint8Array(value.length);
+  for (let i = 0; i < value.length; i += 1) {
+    bytes[i] = value.charCodeAt(i) & 0xff;
+  }
+  return bytes;
+}
+
+function bytesToBinaryString(bytes: Uint8Array): string {
+  const chunkSize = 8192;
+  let output = "";
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    output += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return output;
 }
 
 function extractDocxText(blob: ArrayBuffer): string | null {
@@ -550,14 +706,17 @@ async function buildUrlMarkdown(url: URL): Promise<{
   const sourceType = sourceTypeForUrl(finalUrl, contentType);
   if (sourceType === "pdf") {
     const title = titleFromUrl(finalUrl);
-    const content = `# ${title}\n\nSource: [${escapeMarkdown(finalUrl.toString())}](${finalUrl.toString()})\n\nPDF text extraction is not available yet.`;
+    const pdfText = await extractPdfText(await res.arrayBuffer());
+    const content = `# ${title}\n\nSource: [${escapeMarkdown(finalUrl.toString())}](${finalUrl.toString()})\n\n${
+      pdfText ?? "No readable PDF text was extracted."
+    }`;
     return {
       sourceType,
       sourceUrl: finalUrl.toString(),
       title,
       content,
-      extractedText: null,
-      extractionStatus: "no_text",
+      extractedText: pdfText,
+      extractionStatus: pdfText ? "extracted" : "no_text",
     };
   }
 
@@ -785,7 +944,7 @@ export async function handleFiles(
         httpMetadata: { contentType: meta.mime },
         sha256: meta.sha256,
       });
-      const textContent = extractTextContent(meta.mime, meta.path, blob);
+      const textContent = await extractTextContent(meta.mime, meta.path, blob);
       const shouldBuildWiki = hasUsableWikiText(textContent);
       const extractionStatus = shouldBuildWiki ? "extracted" : "no_text";
       const rows = (await db(env).upsert("files", {
