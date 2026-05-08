@@ -153,8 +153,8 @@ session so the next session can start from repo truth instead of chat history.
   - YouTube imports attempt public caption-track extraction and otherwise fall back to
     `extraction_status=no_text`.
   - URL imports match existing folder tokens before falling back to `Resources/Web`.
-  - Desktop has an import-bar URL field, shows source URL/extraction state in List, and opens source
-    URLs in the system browser.
+  - Desktop has an import-bar URL field with an `Auto place`/folder destination menu, shows source
+    URL/extraction state in List, and opens source URLs in the system browser.
 - Notion access is intentionally deferred to a separate authenticated connector/integration slice.
 
 ## Verified
@@ -210,6 +210,11 @@ Last verified on 2026-05-05 after the draft-visible wiki implementation:
   Windows spawn restriction. Live smoke against the W3 dummy PDF returned quickly as
   `source_type=pdf`, `extraction_status=no_text`, `needs_wiki=false`, and the Worker remained
   responsive afterward, confirming the route no longer hangs when extraction cannot read useful text.
+- The URL import polish slice added a desktop folder destination selector for URL/file imports and a
+  Worker regression for explicit URL folders. `npm.cmd run typecheck`, `npm.cmd run lint`,
+  `npm.cmd run format:check`, `npm.cmd -w apps/desktop run build`, and the outside-sandbox focused
+  route test passed with 54 tests. Live smoke imported `https://example.com/` into
+  `Projects/OpenBrain/Example Domain.md` with `extraction_status=extracted`.
 
 Earlier verified on 2026-05-05 after the no-op Architect suggestion fix:
 

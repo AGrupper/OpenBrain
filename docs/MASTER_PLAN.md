@@ -163,6 +163,8 @@ The graph wiki answers: "What does OpenBrain understand?"
   otherwise they fall back to `Resources/Web`.
 - Done: desktop List can add URLs from the import bar, shows source URL plus truthful extraction
   state, and opens source URLs in the system browser.
+- Done: desktop URL import now exposes an `Auto place`/folder destination menu, while keeping
+  automatic relevant-folder matching as the default.
 - Done: applied `infra/supabase/migrations/007_url_ingestion.sql` in Supabase and smoked URL
   ingestion against the local Worker on 2026-05-08. Webpage import generated wiki concepts with
   citations, PDF/YouTube imports stayed honest `no_text` sources, private URLs were rejected, and

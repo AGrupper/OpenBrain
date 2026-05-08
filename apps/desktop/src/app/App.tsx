@@ -76,11 +76,11 @@ export default function App() {
     }
   };
 
-  const handleAddUrl = async (sourceUrl: string) => {
+  const handleAddUrl = async (sourceUrl: string, targetFolder?: string | null) => {
     setImportStatus("Importing URL...");
     setImportError(null);
     try {
-      const file = await api.files.createUrl(sourceUrl);
+      const file = await api.files.createUrl(sourceUrl, targetFolder);
       setImportStatus(`Imported URL: ${file.path}`);
       setSelectedFile(file);
       setView("list");
@@ -107,6 +107,7 @@ export default function App() {
       <AppHeader view={view} onViewChange={setView} onOpenSettings={() => setSettingsOpen(true)} />
       <ImportBar
         error={importError}
+        folders={folders}
         importStatus={importStatus}
         onAddFiles={handleAddFiles}
         onAddUrl={handleAddUrl}
