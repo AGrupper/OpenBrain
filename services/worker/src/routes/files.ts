@@ -423,6 +423,93 @@ async function fetchYoutubeTitle(url: URL): Promise<string | null> {
   return title || null;
 }
 
+function youtubeVideoId(url: URL): string | null {
+  const host = url.hostname.toLowerCase();
+  if (host === "youtu.be") return cleanYoutubeId(url.pathname.split("/").filter(Boolean)[0]);
+  const watchId = url.searchParams.get("v");
+  if (watchId) return cleanYoutubeId(watchId);
+  const parts = url.pathname.split("/").filter(Boolean);
+  const marker = parts.findIndex((part) => ["embed", "shorts", "live"].includes(part));
+  if (marker >= 0) return cleanYoutubeId(parts[marker + 1]);
+  return null;
+}
+
+function cleanYoutubeId(id: string | undefined): string | null {
+  const clean = id?.trim() ?? "";
+  if (!/^[a-zA-Z0-9_-]{6,}$/.test(clean)) return null;
+  return clean;
+}
+
+type YoutubeCaptionTrack = {
+  langCode: string;
+  name?: string;
+  kind?: string;
+};
+
+async function fetchYoutubeTranscript(videoId: string): Promise<string | null> {
+  const tracks = await fetchYoutubeCaptionTracks(videoId);
+  const preferredTracks = [
+    ...tracks.filter((track) => track.langCode.toLowerCase().startsWith("en")),
+    ...tracks.filter((track) => !track.langCode.toLowerCase().startsWith("en")),
+  ];
+  const candidates = preferredTracks.length
+    ? preferredTracks
+    : [{ langCode: "en" }, { langCode: "en", kind: "asr" }];
+
+  for (const track of candidates) {
+    const text = await fetchYoutubeCaptionTrack(videoId, track);
+    if (text) return text;
+  }
+  return null;
+}
+
+async function fetchYoutubeCaptionTracks(videoId: string): Promise<YoutubeCaptionTrack[]> {
+  const listUrl = new URL("https://video.google.com/timedtext");
+  listUrl.searchParams.set("type", "list");
+  listUrl.searchParams.set("v", videoId);
+  const res = await fetch(listUrl.toString(), { headers: { Accept: "application/xml,text/xml" } });
+  if (!res.ok) return [];
+  const xml = await res.text();
+  return [...xml.matchAll(/<track\b([^>]*)\/?>/gi)].flatMap((match) => {
+    const attrs = match[1] ?? "";
+    const langCode = xmlAttribute(attrs, "lang_code");
+    if (!langCode) return [];
+    const track: YoutubeCaptionTrack = { langCode };
+    const name = xmlAttribute(attrs, "name");
+    const kind = xmlAttribute(attrs, "kind");
+    if (name) track.name = name;
+    if (kind) track.kind = kind;
+    return [track];
+  });
+}
+
+async function fetchYoutubeCaptionTrack(
+  videoId: string,
+  track: YoutubeCaptionTrack,
+): Promise<string | null> {
+  const captionUrl = new URL("https://video.google.com/timedtext");
+  captionUrl.searchParams.set("v", videoId);
+  captionUrl.searchParams.set("lang", track.langCode);
+  if (track.kind) captionUrl.searchParams.set("kind", track.kind);
+  if (track.name) captionUrl.searchParams.set("name", track.name);
+  const res = await fetch(captionUrl.toString(), {
+    headers: { Accept: "application/xml,text/xml" },
+  });
+  if (!res.ok) return null;
+  const xml = await res.text();
+  const lines = [...xml.matchAll(/<text\b[^>]*>([\s\S]*?)<\/text>/gi)]
+    .map((match) => decodeHtml((match[1] ?? "").replace(/<[^>]+>/g, " ")))
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  const transcript = lines.join("\n").slice(0, MAX_WEBPAGE_TEXT_CHARS);
+  return transcript || null;
+}
+
+function xmlAttribute(attrs: string, name: string): string | null {
+  const match = attrs.match(new RegExp(`${name}="([^"]*)"`, "i"));
+  return match ? decodeHtml(match[1]) : null;
+}
+
 async function buildUrlMarkdown(url: URL): Promise<{
   sourceType: FileSourceType;
   sourceUrl: string;
@@ -434,14 +521,18 @@ async function buildUrlMarkdown(url: URL): Promise<{
   const initialType = sourceTypeForUrl(url);
   if (initialType === "youtube") {
     const title = (await fetchYoutubeTitle(url)) ?? titleFromUrl(url);
-    const content = `# ${title}\n\nSource: [${escapeMarkdown(url.toString())}](${url.toString()})\n\nYouTube transcript extraction is not available yet.`;
+    const videoId = youtubeVideoId(url);
+    const transcript = videoId ? await fetchYoutubeTranscript(videoId) : null;
+    const content = `# ${title}\n\nSource: [${escapeMarkdown(url.toString())}](${url.toString()})\n\n${
+      transcript ?? "No public YouTube transcript was available."
+    }`;
     return {
       sourceType: "youtube",
       sourceUrl: url.toString(),
       title,
       content,
-      extractedText: null,
-      extractionStatus: "no_text",
+      extractedText: transcript,
+      extractionStatus: transcript ? "extracted" : "no_text",
     };
   }
 

@@ -166,8 +166,11 @@ The graph wiki answers: "What does OpenBrain understand?"
   ingestion against the local Worker on 2026-05-08. Webpage import generated wiki concepts with
   citations, PDF/YouTube imports stayed honest `no_text` sources, private URLs were rejected, and
   duplicate source URLs were rejected.
-- Next implementation step: add richer extraction for PDFs and YouTube transcripts, or design the
-  Notion connector if Notion becomes the priority.
+- Done: YouTube URL ingestion now attempts to read public caption tracks and stores transcript text
+  when captions are exposed; it still falls back to honest `no_text` state when no public transcript
+  is available.
+- Next implementation step: add richer extraction for PDFs, or design the Notion connector if Notion
+  becomes the priority.
 - Later: Notion access needs a separate authenticated connector/integration design, not the public
   URL ingestion route.
 - Accept local files and arbitrary allowed URLs.

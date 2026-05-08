@@ -197,6 +197,10 @@ Last verified on 2026-05-05 after the draft-visible wiki implementation:
   - Private URL import returned 400 and duplicate URL import returned 409.
   - Desktop-visible graph filtering still excludes `source` nodes; the imported webpage had three
     visible wiki concepts and node detail returned citation/history data.
+- The follow-up YouTube ingestion slice attempts public caption-track extraction through YouTube's
+  public timed-text metadata and stores transcript text when captions are exposed. A live Rick
+  Astley URL smoke still returned `no_text`, so the fallback path is confirmed; a caption-positive
+  live smoke is still useful when a known public-caption URL is available.
 
 Earlier verified on 2026-05-05 after the no-op Architect suggestion fix:
 
@@ -324,8 +328,8 @@ Immediate targets:
      suggested folder is actually correct.
    - Do not delete disposable smoke notes/folders unless the user explicitly approves cleanup.
 3. Continue Milestone 5 broad ingestion:
-   - Next implementation slice after URL smoke: PDF text extraction and YouTube transcript support,
-     or Notion connector planning if the user prioritizes Notion.
+   - Next implementation slice after URL smoke: PDF text extraction, or Notion connector planning if
+     the user prioritizes Notion.
    - Leave the disposable URL smoke files in the vault unless the user explicitly approves cleanup.
 4. After publish, verify `git status -sb` before starting new work.
 

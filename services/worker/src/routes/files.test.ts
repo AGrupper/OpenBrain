@@ -489,13 +489,19 @@ describe("handleFiles - POST /files/url", () => {
   it("imports a YouTube URL without marking wiki work as pending", async () => {
     const fetchMock = makeUrlFetchMock({
       external: (calledUrl) => {
-        if (!calledUrl.startsWith("https://www.youtube.com/oembed?")) {
-          return new Response("not found", { status: 404 });
+        if (calledUrl.startsWith("https://www.youtube.com/oembed?")) {
+          return new Response(JSON.stringify({ title: "Demo Video", author_name: "OpenBrain" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
         }
-        return new Response(JSON.stringify({ title: "Demo Video", author_name: "OpenBrain" }), {
-          status: 200,
-          headers: { "Content-Type": "application/json" },
-        });
+        if (calledUrl.startsWith("https://video.google.com/timedtext?")) {
+          return new Response(calledUrl.includes("type=list") ? "<transcript_list />" : "", {
+            status: 200,
+            headers: { "Content-Type": "application/xml" },
+          });
+        }
+        return new Response("not found", { status: 404 });
       },
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -518,6 +524,57 @@ describe("handleFiles - POST /files/url", () => {
       source_url: "https://www.youtube.com/watch?v=abc123",
       extraction_status: "no_text",
       needs_wiki: false,
+    });
+  });
+
+  it("imports public YouTube transcripts when captions are available", async () => {
+    const fetchMock = makeUrlFetchMock({
+      external: (calledUrl) => {
+        if (calledUrl.startsWith("https://www.youtube.com/oembed?")) {
+          return new Response(JSON.stringify({ title: "Captioned Video" }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        if (calledUrl.includes("type=list")) {
+          return new Response(
+            '<transcript_list><track lang_code="en" name="" /></transcript_list>',
+            {
+              status: 200,
+              headers: { "Content-Type": "application/xml" },
+            },
+          );
+        }
+        if (calledUrl.startsWith("https://video.google.com/timedtext?")) {
+          return new Response(
+            '<transcript><text start="0" dur="1">Hello &amp; welcome.</text><text start="1" dur="1">Second caption line.</text></transcript>',
+            { status: 200, headers: { "Content-Type": "application/xml" } },
+          );
+        }
+        return new Response("not found", { status: 404 });
+      },
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files/url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: "https://youtu.be/captioned123" }),
+    });
+
+    const res = await handleFiles(req, env, new URL(req.url));
+
+    expect(res.status).toBe(201);
+    const filesUpsert = fetchMock.mock.calls.find((call) =>
+      String(call[0]).endsWith("/rest/v1/files"),
+    );
+    expect(JSON.parse(String(filesUpsert?.[1]?.body))).toMatchObject({
+      path: "Resources/Web/Captioned Video.md",
+      source_type: "youtube",
+      source_url: "https://youtu.be/captioned123",
+      extraction_status: "extracted",
+      needs_wiki: true,
+      text_content: expect.stringContaining("Hello & welcome."),
     });
   });
 
