@@ -1,6 +1,6 @@
 mod importer;
 
-use importer::{upload_local_file, ImportConfig};
+use importer::{download_vault_file, upload_local_file, ImportConfig};
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
@@ -17,6 +17,26 @@ struct ImportSummary {
     imported: usize,
     failed: usize,
     failures: Vec<ImportFailure>,
+}
+
+#[derive(serde::Deserialize)]
+struct ExportVaultFile {
+    id: String,
+    path: String,
+}
+
+#[derive(serde::Serialize)]
+struct ExportFailure {
+    path: String,
+    error: String,
+}
+
+#[derive(serde::Serialize)]
+struct ExportSummary {
+    exported: usize,
+    failed: usize,
+    manifest_path: String,
+    failures: Vec<ExportFailure>,
 }
 
 fn sanitize_file_name(name: &str) -> String {
@@ -41,7 +61,7 @@ fn sanitize_file_name(name: &str) -> String {
 
 fn sanitize_folder_path(path: Option<&str>) -> String {
     let Some(path) = path else {
-        return "Inbox".to_string();
+        return String::new();
     };
     let cleaned = path
         .replace('\\', "/")
@@ -52,7 +72,7 @@ fn sanitize_folder_path(path: Option<&str>) -> String {
         .join("/");
 
     if cleaned.is_empty() && !path.trim().is_empty() {
-        "Inbox".to_string()
+        "Imported".to_string()
     } else {
         cleaned
     }
@@ -64,6 +84,25 @@ fn join_remote_path(remote_folder: &str, file_name: &str) -> String {
     } else {
         format!("{remote_folder}/{file_name}")
     }
+}
+
+fn sanitized_relative_export_path(path: &str) -> PathBuf {
+    let mut out = PathBuf::new();
+    for segment in path.replace('\\', "/").split('/') {
+        let raw = segment.trim();
+        if raw.is_empty() || raw == "." || raw == ".." {
+            continue;
+        }
+        let clean = sanitize_file_name(segment);
+        if clean.is_empty() {
+            continue;
+        }
+        out.push(clean);
+    }
+    if out.as_os_str().is_empty() {
+        out.push("untitled");
+    }
+    out
 }
 
 fn unique_remote_path(
@@ -164,12 +203,72 @@ async fn import_files(
     })
 }
 
+#[tauri::command]
+async fn export_vault(
+    files: Vec<ExportVaultFile>,
+    manifest_json: String,
+    export_dir: String,
+    api_url: String,
+    auth_token: String,
+) -> Result<ExportSummary, String> {
+    let root = PathBuf::from(&export_dir);
+    if !root.is_dir() {
+        return Err("Export destination is not a folder".to_string());
+    }
+
+    let manifest_path = root.join("openbrain-export.json");
+    tokio::fs::write(&manifest_path, manifest_json)
+        .await
+        .map_err(|e| format!("Write manifest failed: {e}"))?;
+
+    let cfg = ImportConfig {
+        api_url,
+        auth_token,
+    };
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(90))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let mut failures = Vec::new();
+    let mut exported = 0usize;
+
+    for file in files {
+        let relative = sanitized_relative_export_path(&file.path);
+        let output_path = root.join(relative);
+        if let Some(parent) = output_path.parent() {
+            if let Err(error) = tokio::fs::create_dir_all(parent).await {
+                failures.push(ExportFailure {
+                    path: file.path,
+                    error: format!("Create export folder failed: {error}"),
+                });
+                continue;
+            }
+        }
+
+        match download_vault_file(&client, &cfg, &file.id, &output_path).await {
+            Ok(()) => exported += 1,
+            Err(error) => failures.push(ExportFailure {
+                path: file.path,
+                error: error.to_string(),
+            }),
+        }
+    }
+
+    Ok(ExportSummary {
+        exported,
+        failed: failures.len(),
+        manifest_path: manifest_path.to_string_lossy().to_string(),
+        failures,
+    })
+}
+
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![import_files])
+        .invoke_handler(tauri::generate_handler![import_files, export_vault])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
@@ -190,16 +289,16 @@ mod tests {
         let mut used = HashSet::new();
 
         assert_eq!(
-            unique_remote_path(Path::new("C:/notes/report.md"), "Inbox", &mut used).unwrap(),
-            "Inbox/report.md"
+            unique_remote_path(Path::new("C:/notes/report.md"), "", &mut used).unwrap(),
+            "report.md"
         );
         assert_eq!(
-            unique_remote_path(Path::new("C:/other/report.md"), "Inbox", &mut used).unwrap(),
-            "Inbox/report (2).md"
+            unique_remote_path(Path::new("C:/other/report.md"), "", &mut used).unwrap(),
+            "report (2).md"
         );
         assert_eq!(
-            unique_remote_path(Path::new("C:/other/report"), "Inbox", &mut used).unwrap(),
-            "Inbox/report"
+            unique_remote_path(Path::new("C:/other/report"), "", &mut used).unwrap(),
+            "report"
         );
     }
 
@@ -213,6 +312,18 @@ mod tests {
             sanitize_folder_path(Some(" /bad:name//notes ")),
             "bad-name/notes"
         );
-        assert_eq!(sanitize_folder_path(None), "Inbox");
+        assert_eq!(sanitize_folder_path(None), "");
+    }
+
+    #[test]
+    fn sanitized_relative_export_path_prevents_unsafe_segments() {
+        assert_eq!(
+            sanitized_relative_export_path("../Projects/bad:name?.md"),
+            PathBuf::from("Projects/bad-name-.md")
+        );
+        assert_eq!(
+            sanitized_relative_export_path(""),
+            PathBuf::from("untitled")
+        );
     }
 }

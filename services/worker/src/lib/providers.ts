@@ -290,20 +290,21 @@ export async function askArchitectForWikiDraft(
     .join("\n\n");
 
   const prompt = `You are The Architect for OpenBrain's draft-visible knowledge wiki.
-Create a concise, vault-grounded draft wiki extraction from the source chunks below.
+Create one readable, vault-grounded digest page from the source chunks below.
 
 Rules:
 - Use only the provided chunks.
-- Every topic, claim, and synthesis must include one or more chunk_indexes from the provided chunk numbers.
-- Omit unsupported claims.
+- The digest must include one or more chunk_indexes from the provided chunk numbers.
+- Do not create separate topic or claim pages in this pass; return empty topics and claims arrays.
+- The markdown synthesis should be easy to read but still detailed.
 - Keep titles short and human-readable.
 - Return JSON only with this exact shape:
 {
   "title": "source title",
   "summary": "one-sentence source summary",
-  "topics": [{"title": "topic", "summary": "why this topic matters here", "chunk_indexes": [0]}],
-  "claims": [{"title": "claim title", "content": "specific supported claim", "chunk_indexes": [0]}],
-  "synthesis": {"title": "synthesis title", "content": "markdown synthesis", "chunk_indexes": [0]}
+  "topics": [],
+  "claims": [],
+  "synthesis": {"title": "source title", "content": "markdown digest with Summary, Key Points, Important Details, and Evidence sections", "chunk_indexes": [0]}
 }
 
 File path: ${filePath}

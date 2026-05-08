@@ -165,6 +165,7 @@ describe("handleArchitect - chat", () => {
           ]),
           { status: 200 },
         ),
+      () => new Response(JSON.stringify([{ id: "file-source-1" }]), { status: 200 }),
       () => new Response(JSON.stringify([{ id: "session-1" }]), { status: 201 }),
       () => new Response(JSON.stringify([{ id: "message-user" }]), { status: 201 }),
       () =>
@@ -215,6 +216,66 @@ describe("handleArchitect - chat", () => {
           JSON.stringify(call.body).includes("file-source-1"),
       ),
     ).toBe(true);
+  });
+
+  it("uses current file IDE context without mixing in broad vault sources by default", async () => {
+    const { calls } = recordFetch([
+      () =>
+        new Response(
+          JSON.stringify([
+            {
+              id: "current-file",
+              path: "Projects/OpenBrain/current.md",
+              folder: "Projects/OpenBrain",
+              text_content: "This selected note is about the active OpenBrain login flow.",
+            },
+          ]),
+          { status: 200 },
+        ),
+      () => new Response(JSON.stringify([]), { status: 200 }),
+      () => new Response(JSON.stringify([]), { status: 200 }),
+      () => new Response(JSON.stringify([{ id: "session-1" }]), { status: 201 }),
+      () => new Response(JSON.stringify([{ id: "message-user" }]), { status: 201 }),
+      () =>
+        new Response(
+          JSON.stringify({
+            choices: [{ message: { content: "The current file is about login flow. [1]" } }],
+          }),
+          { status: 200 },
+        ),
+      () => new Response(JSON.stringify([{ id: "message-answer" }]), { status: 201 }),
+      () => new Response(JSON.stringify([{ id: "source-1" }]), { status: 201 }),
+    ]);
+
+    const req = new Request("https://api.openbrain.dev/architect/chat", {
+      method: "POST",
+      body: JSON.stringify({
+        message: "What is this note about?",
+        ide_context: {
+          current_file_id: "current-file",
+          current_path: "Projects/OpenBrain/current.md",
+          current_folder: "Projects/OpenBrain",
+          surface: "reader",
+        },
+      }),
+    });
+
+    const res = await handleArchitect(req, makeEnv(), new URL(req.url));
+    const body = (await res.json()) as {
+      sources: Array<{ file_id: string; path: string; evidence_scope: string }>;
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.sources).toHaveLength(1);
+    expect(body.sources[0]).toMatchObject({
+      file_id: "current-file",
+      path: "Projects/OpenBrain/current.md",
+      evidence_scope: "current_file",
+    });
+    expect(calls.some((call) => call.url.includes("/rpc/search_files"))).toBe(false);
+    expect(calls.some((call) => call.url.includes("/rpc/search_files_by_embedding"))).toBe(false);
+    const llmCall = calls.find((call) => call.url.includes("api.openai.com"));
+    expect(JSON.stringify(llmCall?.body)).toContain("selected note is about");
   });
 
   it("answers deterministically from retrieved sources without calling the LLM", async () => {

@@ -44,6 +44,14 @@ The graph wiki answers: "What does OpenBrain understand?"
   - Start with review-required diffs.
   - Later allow automatic low-risk wiki updates only after audit history and rollback exist.
 - List view remains the raw-material explorer.
+- The desktop UX should feel closer to Apple Notes: left navigation, `All Notes`, `General Notes`,
+  user folders, and `Recently Deleted`; internal PARA/path compatibility should not leak as primary
+  labels.
+- The default UI target is a soft dark, Mac-like daily workspace: calmer surfaces, flatter controls,
+  readable document layout, and lower visual noise than the earlier debug-style panels.
+- Backup/export is a daily-driver requirement: the desktop app should be able to write a readable
+  local export with originals plus a manifest before any deeper sync or account work becomes
+  mandatory.
 
 ## Milestone Status
 
@@ -53,13 +61,13 @@ The graph wiki answers: "What does OpenBrain understand?"
 | 1. Prove Existing Vault Loop          | Complete    | Import -> process -> review -> approve -> reader/graph works locally.                                             |
 | 2. PARA Raw Vault                     | Complete    | Files and notes can be browsed by PARA, and Architect suggestions can place items into PARA without silent moves. |
 | 3. Markdown Note Workspace            | Complete    | Markdown notes can be created, edited, saved, searched, renamed, and deleted.                                     |
-| 4. Graph-First Architect Wiki         | In progress | Imported sources can produce visible knowledge nodes and readable generated pages.                                |
+| 4. Graph-First Architect Wiki         | Complete    | Imported sources can produce one visible cited digest page per source.                                            |
 | 5. Broad Ingestion: Files And URLs    | In progress | Supported files and URLs become searchable vault items with clear processing state.                               |
 | 6. Embeddings And Media Understanding | Pending     | Search/chat can retrieve from raw files, media chunks, transcripts, and wiki pages.                               |
 | 7. Architect Recommendations          | Pending     | The Architect proactively recommends while user-owned material remains controlled.                                |
 | 8. Real Login                         | Pending     | Real login works and users cannot access each other's vault data.                                                 |
 | 9. Search, Chat, And Reader Quality   | Pending     | OpenBrain answers from the vault and shows where answers came from.                                               |
-| 10. Export, Delete, And Privacy       | Pending     | Full portable export and safe deletion work.                                                                      |
+| 10. Export, Delete, And Privacy       | In progress | Soft delete, restore, permanent delete, and first-pass desktop export work.                                       |
 | 11. Cross-Platform Desktop            | Pending     | App can be built and run on PC and Mac from documented steps.                                                     |
 
 ## Milestone Details
@@ -134,9 +142,17 @@ The graph wiki answers: "What does OpenBrain understand?"
 - Done: Graph now defaults to conceptual wiki nodes only: `topic`, `claim`, and `synthesis`.
   Raw files and `source` wiki nodes remain available through citations/source details instead of
   appearing as default graph clutter.
-- Next manual step: restart Worker/Desktop cleanly, confirm only one local Worker is listening on
-  `127.0.0.1:8787`, and smoke that Graph hides raw/source nodes while wiki node details still show
-  generated page content, source file, citations, relationships, and history.
+- Done: wiki generation now creates one visible draft digest node/page per source instead of
+  separate topic, claim, and synthesis pages for every file.
+- Done: Graph now defaults to digest nodes only while keeping source chunks, citations, revisions,
+  and internal source provenance in storage.
+- Done: the reader has a floating Architect popover that sends the selected `current_file_id`, and
+  chat retrieval prioritizes the current file, its chunks, and its digest before broader vault
+  retrieval.
+- Done: the Architect popover now sends explicit IDE context and keeps reader questions focused on
+  the current note first, same-folder context second, and broad vault context only when requested.
+- Done: the soft-dark UI refresh reduced graph/detail visual noise while keeping one digest node per
+  source as the default graph model.
 - Add generated wiki node types: `Source`, `Topic`, `Person`, `Project`, `Area`, `Resource`,
   `Claim`, `Question`, `Synthesis`, and `Contradiction`.
 - Add edge types: `derived_from`, `supports`, `contradicts`, `mentions`, `summarizes`,
@@ -178,8 +194,14 @@ The graph wiki answers: "What does OpenBrain understand?"
   encrypted, image-only, or unsupported PDFs still fall back to honest `no_text` state.
 - Next implementation step: either improve PDF coverage with an extraction service/OCR decision, or
   design the Notion connector if Notion becomes the priority.
-- Later: Notion access needs a separate authenticated connector/integration design, not the public
-  URL ingestion route.
+- Done: migration `008_sync_and_deleted.sql` adds soft-delete fields, expanded source types, and
+  `sync_sources`/`sync_items` for one-way external sync.
+- Done: Worker sync v1 imports Notion pages through `NOTION_API_KEY` and Apple Notes export-folder
+  files through the desktop app. Both are one-way pull paths and trigger existing processing flags.
+- Done: synced Notion and Apple Notes items use a conservative existing-folder matcher before falling
+  back to `Resources/Notion` or `Resources/Apple Notes`.
+- Next manual step: apply `008_sync_and_deleted.sql`, reload PostgREST schema, restart Worker, then
+  smoke soft delete, Notion sync, Apple Notes folder sync, and one-digest Graph output.
 - Accept local files and arbitrary allowed URLs.
 - Store metadata, extracted text/transcripts, summaries, and processing status.
 - Support webpages, PDFs, images, audio, video, and YouTube where extraction is allowed.
@@ -224,6 +246,13 @@ editing implementation files for this milestone.
 
 ### 10. Export, Delete, And Privacy
 
+- Started: normal file deletion is now soft delete, with `Recently Deleted`, restore, and permanent
+  delete endpoints. Permanent delete removes the DB row plus R2 object.
+- Done: desktop export v1 chooses a local folder, downloads non-deleted originals through existing
+  file APIs, preserves sanitized vault-relative paths, and writes `openbrain-export.json` with
+  folders, file metadata, approved links, wiki graph data, and wiki node details.
+- Next manual smoke: export the vault from the desktop toolbar, confirm originals are readable, and
+  inspect `openbrain-export.json` after an app restart.
 - Export originals, notes, URLs, metadata, PARA structure, chunks, transcripts, summaries, wiki
   pages, graph edges, and review history.
 - Verify delete removes related objects, metadata, embeddings, chunks, suggestions, and graph/wiki

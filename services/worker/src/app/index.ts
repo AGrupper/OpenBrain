@@ -4,6 +4,7 @@ import { handleSearch } from "../routes/search";
 import { handleCorrections } from "../routes/corrections";
 import { handleArchitect } from "../routes/architect";
 import { handleFolders } from "../routes/folders";
+import { handleSync } from "../routes/sync";
 import { handleWiki } from "../routes/wiki";
 import { handleTelegram } from "../telegram/webhook";
 import { runLinker, runTagger, runWikiBuilder } from "../jobs";
@@ -32,6 +33,7 @@ export interface Env {
   ANTHROPIC_API_KEY?: string;
   VOYAGE_API_KEY?: string;
   VOYAGE_EMBEDDING_MODEL?: string;
+  NOTION_API_KEY?: string;
 }
 
 const CORS_HEADERS: Record<string, string> = {
@@ -82,6 +84,7 @@ export default {
     else if (path.startsWith("/search")) response = await handleSearch(request, env, url);
     else if (path.startsWith("/corrections")) response = await handleCorrections(request, env, url);
     else if (path.startsWith("/architect")) response = await handleArchitect(request, env, url);
+    else if (path.startsWith("/sync")) response = await handleSync(request, env, url, ctx);
     else if (path.startsWith("/wiki")) response = await handleWiki(request, env, url);
     else response = new Response("Not found", { status: 404 });
 

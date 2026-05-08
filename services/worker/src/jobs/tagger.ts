@@ -55,6 +55,7 @@ export async function runTagger(env: Env, opts: TaggerOptions = {}): Promise<voi
 
   const files = (await db(env).query("files", {
     needs_tagging: "eq.true",
+    deleted_at: "is.null",
     select: "*",
     limit: String(max),
   })) as VaultFile[];
@@ -77,6 +78,7 @@ export async function runTagger(env: Env, opts: TaggerOptions = {}): Promise<voi
 export async function runTaggerForFile(env: Env, fileId: string): Promise<void> {
   const rows = (await db(env).query("files", {
     id: `eq.${fileId}`,
+    deleted_at: "is.null",
     select: "*",
   })) as VaultFile[];
   if (!rows.length) return;

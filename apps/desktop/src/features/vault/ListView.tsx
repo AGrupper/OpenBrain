@@ -1,20 +1,31 @@
-import { type CSSProperties, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from "react";
 import { open as openExternal } from "@tauri-apps/plugin-shell";
 import ReactMarkdown from "react-markdown";
+import { ArchitectPopover } from "../architect-chat/ArchitectPopover";
 import {
   type Link,
   isParaRoot,
-  PARA_DEFAULT_ROOT,
   PARA_ROOTS,
-  paraRootDescription,
   type VaultFile,
   type VaultFolder,
   type WikiNode,
 } from "@openbrain/shared";
 import { api } from "../../shared/api/api";
+import {
+  AllNotesIcon,
+  ChevronIcon,
+  ClockIcon,
+  FileIcon,
+  FolderIcon,
+  FolderPlusIcon,
+  NotePlusIcon,
+  TrashIcon,
+  UploadIcon,
+} from "../../shared/components/Icons";
 
 interface Props {
   files: VaultFile[];
+  deletedFiles: VaultFile[];
   folders: VaultFolder[];
   selectedFile: VaultFile | null;
   onSelect: (f: VaultFile) => void;
@@ -29,15 +40,21 @@ interface FolderNode {
   files: VaultFile[];
 }
 
+const GENERAL_SCOPE = "__general_notes__";
+const DELETED_SCOPE = "__recently_deleted__";
+
+type SidebarScope = string | null;
+
 export function ListView({
   files,
+  deletedFiles,
   folders,
   selectedFile,
   onSelect,
   onChange,
   onImportFiles,
 }: Props) {
-  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [selectedFolder, setSelectedFolder] = useState<SidebarScope>(null);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(PARA_ROOTS));
   const [links, setLinks] = useState<Link[]>([]);
   const [relatedWikiNodes, setRelatedWikiNodes] = useState<WikiNode[]>([]);
@@ -53,8 +70,11 @@ export function ListView({
   const [processingNow, setProcessingNow] = useState(false);
   const [processingError, setProcessingError] = useState<string | null>(null);
   const tree = useMemo(() => buildExplorerTree(files, folders), [files, folders]);
-  const creationTarget = selectedFolder ?? PARA_DEFAULT_ROOT;
-  const canEditSelected = selectedFile ? isMarkdownFile(selectedFile) : false;
+  const selectedRealFolder = isRealFolderScope(selectedFolder) ? selectedFolder : null;
+  const creationTarget = selectedRealFolder;
+  const canEditSelected = selectedFile
+    ? isMarkdownFile(selectedFile) && !selectedFile.deleted_at
+    : false;
   const isDirty = editing && draft !== (preview ?? "");
 
   useEffect(() => {
@@ -118,8 +138,8 @@ export function ListView({
     onSelect(file);
   };
 
-  const createFolder = async () => {
-    const cleanName = sanitizeChildName(newFolderName);
+  const createFolder = async (rawName = newFolderName) => {
+    const cleanName = sanitizeChildName(rawName);
     if (!cleanName) {
       setCreateError("Folder name cannot be empty or contain slashes.");
       return;
@@ -145,9 +165,9 @@ export function ListView({
     }
   };
 
-  const createNote = async () => {
+  const createNote = async (rawName = newNoteName) => {
     if (!confirmDiscard()) return;
-    const cleanName = ensureMarkdownName(sanitizeChildName(newNoteName));
+    const cleanName = ensureMarkdownName(sanitizeChildName(rawName));
     if (!cleanName) {
       setCreateError("Note name cannot be empty or contain slashes.");
       return;
@@ -162,7 +182,9 @@ export function ListView({
     setCreateError(null);
     try {
       const file = await api.files.createText(path, "");
-      setExpanded((current) => new Set([...current, ...folderAncestors(creationTarget)]));
+      if (creationTarget) {
+        setExpanded((current) => new Set([...current, ...folderAncestors(creationTarget)]));
+      }
       setNewNoteName("Untitled.md");
       onSelect(file);
       onChange();
@@ -171,6 +193,16 @@ export function ListView({
     } finally {
       setCreating(null);
     }
+  };
+
+  const promptCreateFolder = () => {
+    const name = window.prompt("Folder name");
+    if (!name) return;
+    void createFolder(name);
+  };
+
+  const createUntitledNote = () => {
+    void createNote(nextUntitledMarkdownName(files, creationTarget));
   };
 
   const startEdit = () => {
@@ -237,12 +269,12 @@ export function ListView({
   };
 
   const deleteFolder = async () => {
-    if (!selectedFolder) return;
-    if (!window.confirm(`Delete empty folder "${selectedFolder}"?`)) return;
+    if (!selectedRealFolder) return;
+    if (!window.confirm(`Delete empty folder "${selectedRealFolder}"?`)) return;
 
     try {
-      await api.folders.delete(selectedFolder);
-      setSelectedFolder(parentFolder(selectedFolder));
+      await api.folders.delete(selectedRealFolder);
+      setSelectedFolder(parentFolder(selectedRealFolder));
       onChange();
     } catch (e) {
       window.alert(`Delete folder failed: ${String(e)}`);
@@ -253,98 +285,125 @@ export function ListView({
     <div style={styles.container}>
       <div style={styles.sidebar}>
         <div style={styles.toolbar}>
-          <div style={styles.createTarget}>New items: {creationTarget}</div>
-          <div style={styles.createRow}>
-            <input
-              style={styles.createInput}
-              value={newFolderName}
-              onChange={(event) => setNewFolderName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") void createFolder();
-              }}
-              placeholder="Folder name"
-              disabled={creating !== null}
-            />
-            <button
-              className="btn-action"
-              onClick={() => void createFolder()}
-              disabled={creating !== null}
-            >
-              {creating === "folder" ? "Creating..." : "New folder"}
-            </button>
+          <div style={styles.toolbarTitle}>
+            <span>Notes</span>
+            {creationTarget && <span style={styles.createTarget}>{creationTarget}</span>}
           </div>
-          <div style={styles.createRow}>
-            <input
-              style={styles.createInput}
-              value={newNoteName}
-              onChange={(event) => setNewNoteName(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") void createNote();
-              }}
-              placeholder="Note name"
+          <div style={styles.toolbarActions}>
+            <ToolbarIconButton
+              title="New folder"
               disabled={creating !== null}
-            />
-            <button
-              className="btn-action"
-              onClick={() => void createNote()}
-              disabled={creating !== null}
+              onClick={promptCreateFolder}
             >
-              {creating === "note" ? "Creating..." : "New note"}
-            </button>
+              <FolderPlusIcon size={18} />
+            </ToolbarIconButton>
+            <ToolbarIconButton
+              title="New note"
+              disabled={creating !== null}
+              onClick={createUntitledNote}
+            >
+              <NotePlusIcon size={18} />
+            </ToolbarIconButton>
+            <ToolbarIconButton
+              title="Add files from this computer"
+              onClick={() => onImportFiles(selectedRealFolder)}
+            >
+              <UploadIcon size={18} />
+            </ToolbarIconButton>
+            {selectedRealFolder && !isParaRoot(selectedRealFolder) && (
+              <ToolbarIconButton title="Delete selected folder" danger onClick={deleteFolder}>
+                <TrashIcon size={18} />
+              </ToolbarIconButton>
+            )}
           </div>
           {createError && <div style={styles.createError}>{createError}</div>}
-          <button
-            className="btn-action"
-            onClick={() => onImportFiles(selectedFolder ?? PARA_DEFAULT_ROOT)}
-          >
-            Add files
-          </button>
-          {selectedFolder && !isParaRoot(selectedFolder) && (
-            <button className="btn-action btn-action-danger" onClick={deleteFolder}>
-              Delete folder
-            </button>
+        </div>
+        <SidebarItem
+          label="All Notes"
+          count={files.length}
+          icon={<AllNotesIcon size={18} />}
+          selected={selectedFolder === null}
+          onClick={() => setSelectedFolder(null)}
+        />
+        <SidebarItem
+          label="General Notes"
+          count={tree.files.length}
+          icon={<FolderIcon size={18} />}
+          selected={selectedFolder === GENERAL_SCOPE}
+          onClick={() => setSelectedFolder(GENERAL_SCOPE)}
+        />
+        <div style={styles.tree}>
+          {selectedFolder === DELETED_SCOPE ? (
+            <>
+              {deletedFiles.map((file) => (
+                <FileRow
+                  key={file.id}
+                  file={file}
+                  depth={0}
+                  selected={selectedFile?.id === file.id}
+                  onSelect={selectFile}
+                />
+              ))}
+              {!deletedFiles.length && <div style={styles.empty}>No recently deleted notes</div>}
+            </>
+          ) : selectedFolder === GENERAL_SCOPE ? (
+            <>
+              {tree.files.map((file) => (
+                <FileRow
+                  key={file.id}
+                  file={file}
+                  depth={0}
+                  selected={selectedFile?.id === file.id}
+                  onSelect={selectFile}
+                />
+              ))}
+              {!tree.files.length && <div style={styles.empty}>No general notes</div>}
+            </>
+          ) : (
+            <>
+              <div style={styles.sidebarSectionLabel}>Folders</div>
+              {tree.folders.map((folder) => (
+                <FolderTreeRow
+                  key={folder.path}
+                  folder={folder}
+                  depth={0}
+                  selectedFolder={selectedFolder}
+                  selectedFile={selectedFile}
+                  expanded={expanded}
+                  onToggle={(path) =>
+                    setExpanded((current) => {
+                      const next = new Set(current);
+                      if (next.has(path)) next.delete(path);
+                      else next.add(path);
+                      return next;
+                    })
+                  }
+                  onSelectFolder={setSelectedFolder}
+                  onSelectFile={selectFile}
+                />
+              ))}
+              {tree.files.map((file) => (
+                <FileRow
+                  key={file.id}
+                  file={file}
+                  depth={0}
+                  selected={selectedFile?.id === file.id}
+                  onSelect={selectFile}
+                />
+              ))}
+              {!tree.folders.length && !tree.files.length && (
+                <div style={styles.empty}>No notes yet</div>
+              )}
+            </>
           )}
         </div>
-        <div
-          className="hover-bg"
-          style={{ ...styles.folderRow, ...(selectedFolder === null ? styles.folderActive : {}) }}
-          onClick={() => setSelectedFolder(null)}
-        >
-          <span style={styles.rootIcon}>ROOT</span>
-          <span style={styles.folderName}>All files</span>
-        </div>
-        <div style={styles.tree}>
-          {tree.folders.map((folder) => (
-            <FolderTreeRow
-              key={folder.path}
-              folder={folder}
-              depth={0}
-              selectedFolder={selectedFolder}
-              selectedFile={selectedFile}
-              expanded={expanded}
-              onToggle={(path) =>
-                setExpanded((current) => {
-                  const next = new Set(current);
-                  if (next.has(path)) next.delete(path);
-                  else next.add(path);
-                  return next;
-                })
-              }
-              onSelectFolder={setSelectedFolder}
-              onSelectFile={selectFile}
-            />
-          ))}
-          {tree.files.map((file) => (
-            <FileRow
-              key={file.id}
-              file={file}
-              depth={0}
-              selected={selectedFile?.id === file.id}
-              onSelect={selectFile}
-            />
-          ))}
-          {!tree.folders.length && !tree.files.length && <div style={styles.empty}>No files</div>}
-        </div>
+        <SidebarItem
+          label="Recently Deleted"
+          count={deletedFiles.length}
+          icon={<ClockIcon size={18} />}
+          selected={selectedFolder === DELETED_SCOPE}
+          onClick={() => setSelectedFolder(DELETED_SCOPE)}
+        />
       </div>
 
       <div style={styles.detail}>
@@ -452,12 +511,65 @@ export function ListView({
             )}
           </>
         ) : (
-          <div style={styles.placeholder}>
-            {selectedFolder ? folderPlaceholder(selectedFolder) : "Select a file to preview"}
-          </div>
+          <div style={styles.placeholder}>{folderPlaceholder(selectedFolder)}</div>
         )}
       </div>
+      <ArchitectPopover selectedFile={selectedFile} onSelectFile={onSelect} />
     </div>
+  );
+}
+
+function SidebarItem({
+  label,
+  count,
+  icon,
+  selected,
+  onClick,
+}: {
+  label: string;
+  count: number;
+  icon: ReactNode;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="hover-bg"
+      style={{ ...styles.sidebarItem, ...(selected ? styles.folderActive : {}) }}
+      onClick={onClick}
+      title={label}
+    >
+      <span style={styles.sidebarIcon}>{icon}</span>
+      <span style={styles.folderName}>{label}</span>
+      <span style={styles.folderCount}>{count}</span>
+    </button>
+  );
+}
+
+function ToolbarIconButton({
+  title,
+  children,
+  disabled,
+  danger = false,
+  onClick,
+}: {
+  title: string;
+  children: ReactNode;
+  disabled?: boolean;
+  danger?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={danger ? "btn-action-danger" : undefined}
+      style={{ ...styles.toolbarIconButton, ...(danger ? styles.toolbarIconDanger : {}) }}
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -473,7 +585,7 @@ function FolderTreeRow({
 }: {
   folder: FolderNode;
   depth: number;
-  selectedFolder: string | null;
+  selectedFolder: SidebarScope;
   selectedFile: VaultFile | null;
   expanded: Set<string>;
   onToggle: (path: string) => void;
@@ -504,12 +616,13 @@ function FolderTreeRow({
           disabled={!hasChildren}
           aria-label={isExpanded ? "Collapse folder" : "Expand folder"}
         >
-          {hasChildren ? (isExpanded ? "v" : ">") : ""}
+          {hasChildren ? <ChevronIcon open={isExpanded} size={13} /> : null}
         </button>
         <span style={styles.folderIcon}>
-          {folder.path && isParaRoot(folder.path) ? "PARA" : "DIR"}
+          <FolderIcon size={17} />
         </span>
         <span style={styles.folderName}>{folder.name}</span>
+        <span style={styles.folderCount}>{countFiles(folder)}</span>
       </div>
       {isExpanded &&
         folder.folders.map((child) => (
@@ -552,7 +665,8 @@ function FileActions({
   onSelect: (f: VaultFile) => void;
   disabled?: boolean;
 }) {
-  const [busy, setBusy] = useState<"rename" | "delete" | null>(null);
+  const [busy, setBusy] = useState<"rename" | "delete" | "restore" | "permanent" | null>(null);
+  const isDeleted = Boolean(file.deleted_at);
 
   const handleRename = async () => {
     if (disabled) return;
@@ -579,7 +693,7 @@ function FileActions({
 
   const handleDelete = async () => {
     if (disabled) return;
-    if (!window.confirm(`Delete "${file.path}"? This removes it from R2 and Supabase.`)) return;
+    if (!window.confirm(`Move "${file.path}" to Recently Deleted?`)) return;
     setBusy("delete");
     try {
       await api.files.delete(file.id);
@@ -590,6 +704,49 @@ function FileActions({
       setBusy(null);
     }
   };
+
+  const handleRestore = async () => {
+    setBusy("restore");
+    try {
+      const restored = await api.files.restore(file.id);
+      onChange();
+      if (restored) onSelect(restored);
+    } catch (e) {
+      window.alert(`Restore failed: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handlePermanentDelete = async () => {
+    if (!window.confirm(`Permanently delete "${file.path}"? This removes it from storage.`)) return;
+    setBusy("permanent");
+    try {
+      await api.files.permanentDelete(file.id);
+      onChange();
+    } catch (e) {
+      window.alert(`Permanent delete failed: ${String(e)}`);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  if (isDeleted) {
+    return (
+      <div style={styles.actions}>
+        <button className="btn-action" disabled={busy !== null} onClick={handleRestore}>
+          {busy === "restore" ? "Restoring..." : "Restore"}
+        </button>
+        <button
+          className="btn-action btn-action-danger"
+          disabled={busy !== null}
+          onClick={handlePermanentDelete}
+        >
+          {busy === "permanent" ? "Deleting..." : "Delete permanently"}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div style={styles.actions}>
@@ -627,7 +784,7 @@ function FileRow({
       style={{ ...styles.fileRow, paddingLeft: 12 + depth * 16 }}
       onClick={() => onSelect(file)}
     >
-      <span style={styles.fileIcon}>{extIcon(ext)}</span>
+      <span style={styles.fileIcon}>{fileIcon(ext)}</span>
       <span style={styles.fileName}>{name}</span>
       {pendingCount > 0 && <span style={styles.processingMini}>{pendingCount}</span>}
       <span style={styles.fileSize}>{formatSize(file.size)}</span>
@@ -648,6 +805,15 @@ function ProcessingState({
 }) {
   const steps = processingSteps(file);
   const pendingCount = steps.filter((step) => step.pending).length;
+  const textStep = steps.find((step) => step.key === "text");
+  if (pendingCount === 0 && !error) {
+    return (
+      <div style={styles.processingCompact}>
+        <span style={styles.processingReady}>Ready</span>
+        {textStep && <span style={styles.processingMuted}>{textStep.label}</span>}
+      </div>
+    );
+  }
   return (
     <div style={styles.processingPanel}>
       <div style={styles.processingHeader}>
@@ -763,9 +929,30 @@ function compareFolders(a: FolderNode, b: FolderNode): number {
   return a.name.localeCompare(b.name);
 }
 
-function folderPlaceholder(path: string): string {
-  if (isParaRoot(path)) return `${path}: ${paraRootDescription(path)}`;
-  return `Selected folder: ${path}`;
+function folderPlaceholder(scope: SidebarScope): string {
+  if (scope === GENERAL_SCOPE) return "Select a note from General Notes";
+  if (scope === DELETED_SCOPE)
+    return "Recently Deleted will show removed notes after soft delete is enabled.";
+  if (scope) return `Select a note in ${scope}`;
+  return "Select a note to preview";
+}
+
+function isRealFolderScope(scope: SidebarScope): scope is string {
+  return Boolean(scope && scope !== GENERAL_SCOPE && scope !== DELETED_SCOPE);
+}
+
+function countFiles(folder: FolderNode): number {
+  return folder.files.length + folder.folders.reduce((sum, child) => sum + countFiles(child), 0);
+}
+
+function nextUntitledMarkdownName(files: VaultFile[], folder: string | null): string {
+  const existing = new Set(files.map((file) => file.path));
+  for (let index = 1; index < 1000; index += 1) {
+    const name = index === 1 ? "Untitled.md" : `Untitled ${index}.md`;
+    const path = joinPath(folder, name);
+    if (!existing.has(path)) return name;
+  }
+  return `Untitled ${Date.now()}.md`;
 }
 
 function treeHasFolder(node: FolderNode, path: string): boolean {
@@ -936,35 +1123,19 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
 }
 
-function extIcon(ext: string): string {
-  const map: Record<string, string> = {
-    md: "MD",
-    markdown: "MD",
-    txt: "TXT",
-    pdf: "PDF",
-    png: "IMG",
-    jpg: "IMG",
-    jpeg: "IMG",
-    mp4: "VID",
-    mp3: "AUD",
-    zip: "ZIP",
-    ts: "TS",
-    tsx: "TS",
-    js: "JS",
-    jsx: "JS",
-    py: "PY",
-  };
-  return map[ext] ?? "FILE";
+function fileIcon(ext: string): ReactNode {
+  const textLike = new Set(["md", "markdown", "txt"]);
+  return textLike.has(ext) ? <AllNotesIcon size={16} /> : <FileIcon size={16} />;
 }
 
 const styles: Record<string, React.CSSProperties> = {
   container: { display: "flex", height: "100%", overflow: "hidden", background: "var(--bg-base)" },
   sidebar: {
-    width: 340,
+    width: 310,
     borderRight: "1px solid var(--border-color)",
     overflowY: "auto",
     padding: "var(--spacing-3) 0",
-    background: "var(--bg-surface)",
+    background: "var(--bg-sidebar)",
   },
   toolbar: {
     display: "flex",
@@ -974,11 +1145,44 @@ const styles: Record<string, React.CSSProperties> = {
     borderBottom: "1px solid var(--border-color)",
     marginBottom: "var(--spacing-2)",
   },
+  toolbarTitle: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "var(--spacing-2)",
+    color: "var(--text-primary)",
+    fontSize: 16,
+    fontWeight: 700,
+  },
+  toolbarActions: {
+    display: "grid",
+    gridTemplateColumns: "repeat(4, 34px)",
+    gap: "var(--spacing-2)",
+    alignItems: "center",
+  },
+  toolbarIconButton: {
+    width: 34,
+    height: 32,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: "var(--radius-sm)",
+    border: "1px solid var(--border-highlight)",
+    background: "transparent",
+    color: "var(--text-secondary)",
+    cursor: "pointer",
+    transition: "all var(--transition-fast)",
+  },
+  toolbarIconDanger: {
+    color: "var(--accent-danger)",
+  },
   createTarget: {
     color: "var(--text-muted)",
-    fontSize: 11,
-    fontWeight: 700,
-    textTransform: "uppercase",
+    fontSize: 12,
+    fontWeight: 600,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
   },
   createRow: {
     display: "grid",
@@ -1007,6 +1211,32 @@ const styles: Record<string, React.CSSProperties> = {
     lineHeight: 1.4,
   },
   tree: { paddingBottom: "var(--spacing-4)" },
+  sidebarSectionLabel: {
+    color: "var(--text-muted)",
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: "uppercase",
+    padding: "var(--spacing-3) var(--spacing-3) var(--spacing-1)",
+  },
+  sidebarItem: {
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    gap: "var(--spacing-2)",
+    padding: "var(--spacing-2) var(--spacing-3)",
+    cursor: "pointer",
+    border: "none",
+    background: "transparent",
+    color: "var(--text-secondary)",
+    fontSize: 14,
+    textAlign: "left",
+    transition: "background var(--transition-fast), color var(--transition-fast)",
+  },
+  sidebarIcon: {
+    display: "inline-flex",
+    color: "var(--accent-warning)",
+    flexShrink: 0,
+  },
   folderRow: {
     display: "flex",
     alignItems: "center",
@@ -1034,6 +1264,9 @@ const styles: Record<string, React.CSSProperties> = {
     padding: 0,
     flexShrink: 0,
     fontSize: 12,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
   },
   rootIcon: {
     color: "var(--accent-primary)",
@@ -1048,16 +1281,19 @@ const styles: Record<string, React.CSSProperties> = {
   },
   folderIcon: {
     color: "var(--accent-warning)",
-    border: "1px solid var(--border-color)",
-    borderRadius: "var(--radius-sm)",
-    padding: "1px 4px",
-    fontSize: 10,
-    fontWeight: 700,
-    minWidth: 30,
-    textAlign: "center",
+    display: "inline-flex",
+    width: 20,
+    alignItems: "center",
+    justifyContent: "center",
     flexShrink: 0,
   },
   folderName: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
+  folderCount: {
+    color: "var(--text-muted)",
+    fontSize: 12,
+    fontWeight: 650,
+    flexShrink: 0,
+  },
   fileRow: {
     display: "flex",
     alignItems: "center",
@@ -1071,21 +1307,18 @@ const styles: Record<string, React.CSSProperties> = {
   },
   fileIcon: {
     color: "var(--accent-primary)",
-    border: "1px solid var(--border-color)",
-    borderRadius: "var(--radius-sm)",
-    padding: "1px 4px",
-    fontSize: 10,
-    fontWeight: 700,
-    minWidth: 30,
-    textAlign: "center",
+    display: "inline-flex",
+    width: 20,
+    alignItems: "center",
+    justifyContent: "center",
     flexShrink: 0,
   },
   fileName: { flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
   fileSize: { color: "var(--text-muted)", fontSize: 11, flexShrink: 0 },
   processingMini: {
     color: "#fed7aa",
-    background: "#3b2308",
-    border: "1px solid #92400e",
+    background: "rgba(242, 184, 75, 0.12)",
+    border: "1px solid rgba(242, 184, 75, 0.32)",
     borderRadius: 999,
     minWidth: 18,
     height: 18,
@@ -1104,8 +1337,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
   detail: { flex: 1, overflowY: "auto", padding: "var(--spacing-8)", background: "var(--bg-base)" },
   filename: {
-    fontSize: 28,
-    fontWeight: 700,
+    fontSize: 30,
+    fontWeight: 680,
     marginBottom: "var(--spacing-2)",
     color: "var(--text-primary)",
   },
@@ -1145,7 +1378,19 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: "var(--radius-md)",
     padding: "var(--spacing-3)",
     marginBottom: "var(--spacing-4)",
-    background: "var(--bg-surface)",
+    background: "rgba(255, 255, 255, 0.02)",
+  },
+  processingCompact: {
+    display: "flex",
+    alignItems: "center",
+    gap: "var(--spacing-2)",
+    color: "var(--text-muted)",
+    fontSize: 12,
+    marginBottom: "var(--spacing-4)",
+  },
+  processingMuted: {
+    color: "var(--text-muted)",
+    fontSize: 12,
   },
   processingHeader: {
     display: "flex",
@@ -1185,9 +1430,9 @@ const styles: Record<string, React.CSSProperties> = {
     gap: "var(--spacing-2)",
   },
   processingStepReady: {
-    color: "#a7f3d0",
-    background: "#052e24",
-    border: "1px solid #047857",
+    color: "var(--text-secondary)",
+    background: "var(--bg-surface-hover)",
+    border: "1px solid var(--border-color)",
     borderRadius: "var(--radius-sm)",
     padding: "3px 7px",
     fontSize: 11,
@@ -1195,8 +1440,8 @@ const styles: Record<string, React.CSSProperties> = {
   },
   processingStepPending: {
     color: "#fed7aa",
-    background: "#3b2308",
-    border: "1px solid #92400e",
+    background: "rgba(242, 184, 75, 0.1)",
+    border: "1px solid rgba(242, 184, 75, 0.28)",
     borderRadius: "var(--radius-sm)",
     padding: "3px 7px",
     fontSize: 11,
@@ -1238,14 +1483,14 @@ const styles: Record<string, React.CSSProperties> = {
     width: "100%",
     minHeight: 420,
     resize: "vertical",
-    background: "var(--bg-surface)",
+    background: "rgba(255, 255, 255, 0.02)",
     color: "var(--text-primary)",
     border: "1px solid var(--border-color)",
-    borderRadius: "var(--radius-lg)",
-    padding: "var(--spacing-4)",
-    fontFamily: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
-    fontSize: 14,
-    lineHeight: 1.6,
+    borderRadius: "var(--radius-md)",
+    padding: "var(--spacing-6)",
+    fontFamily: "var(--font-sans)",
+    fontSize: 16,
+    lineHeight: 1.75,
     outline: "none",
     marginBottom: "var(--spacing-6)",
   },
@@ -1259,15 +1504,16 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: "var(--spacing-6)",
   },
   markdown: {
-    background: "var(--bg-surface)",
-    borderRadius: "var(--radius-lg)",
-    padding: "var(--spacing-6)",
-    fontSize: 15,
+    background: "transparent",
+    borderRadius: 0,
+    padding: "var(--spacing-2) 0 var(--spacing-6)",
+    fontSize: 16,
     lineHeight: 1.8,
     marginBottom: "var(--spacing-6)",
     color: "var(--text-secondary)",
-    boxShadow: "var(--shadow-sm)",
-    border: "1px solid var(--border-color)",
+    boxShadow: "none",
+    border: "none",
+    maxWidth: 860,
   },
   nonText: {
     color: "var(--text-secondary)",

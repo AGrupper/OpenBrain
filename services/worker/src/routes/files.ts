@@ -32,6 +32,8 @@ export const FILES_SELECT_WHITELIST = new Set([
   "source_url",
   "extraction_status",
   "extraction_error",
+  "deleted_at",
+  "deleted_reason",
 ]);
 const FILES_MAX_LIMIT = 500;
 const DEFAULT_URL_FOLDER = "Resources/Web";
@@ -49,6 +51,10 @@ export function parseFilesQuery(searchParams: URLSearchParams): {
   error?: string;
 } {
   const params: Record<string, string> = { order: "updated_at.desc" };
+  const deletedOnly = searchParams.get("deleted_only") === "true";
+  const includeDeleted = searchParams.get("include_deleted") === "true";
+  if (deletedOnly) params.deleted_at = "not.is.null";
+  else if (!includeDeleted) params.deleted_at = "is.null";
 
   for (const key of FILES_BOOL_FILTERS) {
     if (searchParams.get(key) === "true") params[key] = "eq.true";
@@ -201,12 +207,12 @@ function urlFolderMatchingText(title: string, sourceUrl: string): string {
   }
 }
 
-async function sha256Hex(bytes: Uint8Array): Promise<string> {
+export async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-async function extractTextContent(
+export async function extractTextContent(
   mime: string,
   path: string,
   blob: ArrayBuffer,
@@ -853,6 +859,8 @@ export async function handleFiles(
         source_url: built.sourceUrl,
         extraction_status: built.extractionStatus,
         extraction_error: null,
+        deleted_at: null,
+        deleted_reason: null,
         updated_at: new Date().toISOString(),
         needs_embedding: true,
         needs_linking: true,
@@ -907,6 +915,8 @@ export async function handleFiles(
         source_url: null,
         extraction_status: shouldBuildWiki ? "extracted" : "no_text",
         extraction_error: null,
+        deleted_at: null,
+        deleted_reason: null,
         updated_at: new Date().toISOString(),
         needs_embedding: true,
         needs_linking: true,
@@ -958,6 +968,8 @@ export async function handleFiles(
         source_url: null,
         extraction_status: extractionStatus,
         extraction_error: null,
+        deleted_at: null,
+        deleted_reason: null,
         updated_at: new Date().toISOString(),
         needs_embedding: true,
         needs_linking: true,
@@ -1095,12 +1107,30 @@ export async function handleFiles(
     }
 
     // DELETE /files/:id — remove from R2 + DB
-    if (method === "DELETE" && fileId && !sub) {
+    if (method === "POST" && fileId && sub === "restore") {
+      const rows = await db(env).patch("files", fileId, {
+        deleted_at: null,
+        deleted_reason: null,
+        updated_at: new Date().toISOString(),
+      });
+      return Response.json(Array.isArray(rows) ? rows[0] : rows);
+    }
+
+    if (method === "DELETE" && fileId && sub === "permanent") {
       const rows = (await db(env).query("files", { id: `eq.${fileId}`, select: "path" })) as {
         path: string;
       }[];
       if (rows.length) await env.VAULT_BUCKET.delete(rows[0].path);
       await db(env).delete("files", fileId);
+      return new Response(null, { status: 204 });
+    }
+
+    if (method === "DELETE" && fileId && !sub) {
+      await db(env).patch("files", fileId, {
+        deleted_at: new Date().toISOString(),
+        deleted_reason: "user_deleted",
+        updated_at: new Date().toISOString(),
+      });
       return new Response(null, { status: 204 });
     }
 
@@ -1113,8 +1143,11 @@ export async function handleFiles(
         select: "id,path",
       })) as { id: string; path: string }[];
       if (!rows.length) return new Response(null, { status: 204 });
-      await env.VAULT_BUCKET.delete(rows[0].path);
-      await db(env).delete("files", rows[0].id);
+      await db(env).patch("files", rows[0].id, {
+        deleted_at: new Date().toISOString(),
+        deleted_reason: "user_deleted",
+        updated_at: new Date().toISOString(),
+      });
       return new Response(null, { status: 204 });
     }
 

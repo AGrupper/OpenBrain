@@ -39,7 +39,7 @@ interface GraphData {
 }
 
 const EMPTY_WIKI_GRAPH: WikiGraphResponse = { nodes: [], edges: [] };
-const VISIBLE_WIKI_KINDS = new Set(["topic", "claim", "synthesis"]);
+const VISIBLE_WIKI_KINDS = new Set(["synthesis"]);
 
 export function GraphView({ files, onSelect }: Props) {
   const [wikiGraph, setWikiGraph] = useState<WikiGraphResponse>(EMPTY_WIKI_GRAPH);
@@ -197,8 +197,8 @@ export function GraphView({ files, onSelect }: Props) {
             );
           }
         }}
-        backgroundColor="#0a0a0a"
-        linkDirectionalParticles={2}
+        backgroundColor="#101014"
+        linkDirectionalParticles={1}
         linkDirectionalParticleWidth={(link) => Math.max(1.2, (link.value as number) * 1.8)}
       />
       {wikiError && <div style={styles.error}>Could not load wiki graph: {wikiError}</div>}
@@ -207,7 +207,7 @@ export function GraphView({ files, onSelect }: Props) {
           No wiki concepts yet.
           <br />
           <span style={{ fontSize: 12 }}>
-            The Architect will add draft topics, claims, and syntheses as it processes sources.
+            The Architect will add one draft digest per processed source.
           </span>
         </div>
       )}
@@ -249,19 +249,19 @@ function nodeColor(
   neighborIds: Set<string> | null,
 ): string {
   if (activeNodeId && node.id === activeNodeId) return "#f3f4f6";
-  if (neighborIds && neighborIds.has(node.id)) return "#10b981";
+  if (neighborIds && neighborIds.has(node.id)) return "#68d4b2";
   if (neighborIds && !neighborIds.has(node.id)) return "#2d3142";
-  if (node.kind === "synthesis") return "#8b5cf6";
-  if (node.kind === "claim") return "#f59e0b";
-  if (node.kind === "topic") return "#14b8a6";
-  return "#a78bfa";
+  if (node.kind === "synthesis") return "#8b7cf6";
+  if (node.kind === "claim") return "#f2b84b";
+  if (node.kind === "topic") return "#56c7b2";
+  return "#b7adff";
 }
 
 function linkColor(link: GraphLink, activeNodeId: string | null): string {
   if (activeNodeId && (sourceId(link) === activeNodeId || targetId(link) === activeNodeId)) {
     return "#8ab4ff";
   }
-  return "#b45309";
+  return "rgba(242, 184, 75, 0.55)";
 }
 
 function WikiDetailPanel({

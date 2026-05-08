@@ -45,6 +45,12 @@ session so the next session can start from repo truth instead of chat history.
   shared URL source metadata types, and desktop URL import UI. The user applied the migration in
   Supabase on 2026-05-08, reloaded PostgREST schema, and live API smoke passed against the local
   Worker.
+- Current implementation slice adds Apple Notes-style navigation, single digest wiki output,
+  current-file Architect popover context, soft delete/Recently Deleted storage and routes, and
+  one-way Notion/Apple Notes sync scaffolding through migration `008_sync_and_deleted.sql`.
+- Daily-driver polish slice adds a softer Mac-style dark theme, calmer reader/graph/chat surfaces,
+  compact processing state, and desktop export v1 for non-deleted vault originals plus an
+  `openbrain-export.json` manifest.
 
 ## Completed
 
@@ -155,7 +161,37 @@ session so the next session can start from repo truth instead of chat history.
   - URL imports match existing folder tokens before falling back to `Resources/Web`.
   - Desktop has an import-bar URL field with an `Auto place`/folder destination menu, shows source
     URL/extraction state in List, and opens source URLs in the system browser.
-- Notion access is intentionally deferred to a separate authenticated connector/integration slice.
+- The desktop shell now uses a left navigation rail for Notes, Graph, Review, Architect, Settings,
+  and account placeholder instead of the top tab strip.
+- The List view sidebar now uses icon-only create/import controls, hides `ROOT`/`PARA`/`DIR`
+  badges, and exposes `All Notes`, `General Notes`, folders, and `Recently Deleted`.
+- The wiki builder now creates one visible draft digest node/page per source instead of separate
+  topic, claim, and synthesis pages; chunks, citations, revision history, and internal source
+  provenance remain.
+- The Graph route and desktop graph now default to digest nodes only.
+- The List reader has a floating Architect popover that passes the selected `current_file_id`; the
+  Worker prioritizes current-file text, source chunks, and the current file's wiki digest before
+  broader vault retrieval.
+- The Architect popover now sends an explicit `ide_context` payload. Reader questions stay focused
+  on the current note by default; same-folder context is pulled only for folder/related-note
+  questions, and wider vault retrieval is used only for explicit broad-vault questions or when the
+  current note has no useful context.
+- Migration `008_sync_and_deleted.sql` adds `files.deleted_at`, `deleted_reason`, expanded
+  `source_type` support for `notion` and `apple_notes`, `sync_sources`, `sync_items`, and
+  soft-delete-aware search/vector RPC replacements.
+- File delete is now soft delete by default. Restore and permanent delete routes were added.
+- Worker `/sync/notion/run` pulls readable Notion pages with `NOTION_API_KEY` from Worker env and
+  imports them one-way as OpenBrain source files.
+- Worker `/sync/apple-notes/files` imports desktop-selected Apple Notes export files (`.md`, `.txt`,
+  `.html`, `.pdf`) one-way as OpenBrain source files.
+- Sync imports first try to match existing user folders by folder-name tokens in the title, URL/path,
+  and extracted text, then fall back to the default Notion or Apple Notes resource folder.
+- The desktop UI has been softened toward the daily-driver target: flatter dark surfaces, lower
+  saturation, less glow, compact ready-state processing, more document-like Markdown reading, and
+  calmer graph/chat/search styling.
+- Desktop export v1 is implemented through a Tauri command that writes `openbrain-export.json`,
+  downloads non-deleted originals with existing Worker file download APIs, preserves sanitized
+  vault-relative paths, and reports per-file failures without blocking the whole export.
 
 ## Verified
 
@@ -237,6 +273,16 @@ Last verified on 2026-05-05 after the draft-visible wiki implementation:
   Worker wiki route test passes with 4 tests.
 - After the search/chat/reader quality slices on 2026-05-08, the full suite passed with
   `npm.cmd test`: 12 test files and 121 tests.
+- During the UI/wiki/sync/delete/export slice on 2026-05-08, the required checks passed:
+  - `npm.cmd run typecheck`
+  - `npm.cmd run lint`
+  - `npm.cmd run format:check`
+  - `cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check`
+  - `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml` passed with 6 tests.
+  - `npm.cmd test` passed outside the sandbox with 12 test files and 122 tests after the known
+    Windows sandbox `spawn EPERM`.
+  - `npm.cmd -w apps/desktop run build` passed outside the sandbox after the known Vite/esbuild
+    `spawn EPERM`; it still emits the existing large-chunk warning.
 
 Earlier verified on 2026-05-05 after the no-op Architect suggestion fix:
 
@@ -350,23 +396,24 @@ Continue from `docs/MASTER_PLAN.md`.
 
 Immediate targets:
 
-1. Finish Graph-First Architect Wiki cleanup smoke:
-   - Stop duplicate local Worker processes if more than one `workerd` is listening on
-     `127.0.0.1:8787`.
-   - Restart Worker and desktop cleanly.
-   - Verify Graph defaults to wiki concepts only: no raw file nodes and no `source` wiki nodes.
-   - Verify clicking a visible wiki node shows generated page content, source file, chunk citations,
-     backlinks, outgoing edges, and history.
-2. Review or clean remaining pending suggestions:
+1. Smoke the refreshed desktop:
+   - Confirm left navigation and note sidebar layout.
+   - Confirm Graph shows one digest node per processed source.
+   - Confirm the floating Architect popover answers with selected-file context.
+   - Confirm soft delete, restore, and permanent delete behavior.
+   - Export the vault and confirm originals plus `openbrain-export.json` are readable.
+2. Configure or debug sync:
+   - Add `NOTION_API_KEY` only to `services/worker/.dev.vars` or deployed Worker env.
+   - Use the Notion sync button after the Worker restarts with the key.
+   - Use the Apple Notes sync button with an exported local notes folder.
+   - Notion sync is still a known bug in the desktop/runtime flow and should not block the core
+     note-taking smoke.
+3. Review or clean remaining pending suggestions:
    - Reject the stale no-op `manual-smoke.md -> Resources/SmokeManual` folder card if it remains
      visible.
    - Do not approve unrelated deterministic smoke placements for real personal files unless the
      suggested folder is actually correct.
    - Do not delete disposable smoke notes/folders unless the user explicitly approves cleanup.
-3. Continue Milestone 5 broad ingestion:
-   - Next implementation slice after URL/PDF smoke: Notion connector planning, URL ingestion polish,
-     or a deliberate extraction-service/OCR decision for harder PDFs.
-   - Leave the disposable URL smoke files in the vault unless the user explicitly approves cleanup.
 4. After publish, verify `git status -sb` before starting new work.
 
 ## Guardrails

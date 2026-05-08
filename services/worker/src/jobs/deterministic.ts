@@ -137,34 +137,31 @@ export function deterministicWikiDraft(
   synthesis: { title: string; content: string; chunk_indexes: number[] };
 } {
   const title = filePath.split("/").pop() ?? filePath;
-  const tokens = [...pathTokens(filePath)].filter(
-    (token) => token.length > 3 && !STOP_WORDS.has(token),
-  );
-  const topic = tokens[0] ?? "vault source";
   const firstChunk = chunks[0];
-  const excerpt = firstChunk?.content.trim().replace(/\s+/g, " ").slice(0, 180) ?? title;
+  const excerpt = firstChunk?.content.trim().replace(/\s+/g, " ").slice(0, 280) ?? title;
   const chunkIndexes = firstChunk ? [firstChunk.chunk_index] : [];
 
   return {
     title,
-    summary: `Draft wiki synthesis for ${title}.`,
-    topics: [
-      {
-        title: topic,
-        summary: `${title} is associated with ${topic}.`,
-        chunk_indexes: chunkIndexes,
-      },
-    ],
-    claims: [
-      {
-        title: `${title} source claim`,
-        content: `The source says: ${excerpt}`,
-        chunk_indexes: chunkIndexes,
-      },
-    ],
+    summary: `Draft digest for ${title}.`,
+    topics: [],
+    claims: [],
     synthesis: {
-      title: `${title} synthesis`,
-      content: `# ${title}\n\n${excerpt}`,
+      title,
+      content: `# ${title}
+
+## Summary
+
+${excerpt}
+
+## Key Points
+
+- This source has been converted into one digest page for review.
+- The digest keeps citations attached to stored source chunks.
+
+## Important Details
+
+${excerpt}`,
       chunk_indexes: chunkIndexes,
     },
   };

@@ -62,6 +62,27 @@ pub async fn upload_local_file(
     Ok(())
 }
 
+pub async fn download_vault_file(
+    client: &Client,
+    cfg: &ImportConfig,
+    file_id: &str,
+    output_path: &Path,
+) -> Result<()> {
+    let bytes = client
+        .get(format!("{}/files/{file_id}/download", cfg.api_url))
+        .header("Authorization", format!("Bearer {}", cfg.auth_token))
+        .send()
+        .await?
+        .error_for_status()?
+        .bytes()
+        .await?;
+
+    tokio::fs::write(output_path, bytes)
+        .await
+        .context("write exported file")?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

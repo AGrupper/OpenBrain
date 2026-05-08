@@ -1,5 +1,6 @@
 import type { Env } from "../app";
 import type {
+  ArchitectChatContext,
   ArchitectChatResponse,
   ArchitectChatSource,
   ArchitectJob,
@@ -262,11 +263,26 @@ async function applySuggestion(env: Env, suggestion: ArchitectSuggestion) {
 }
 
 async function handleChat(request: Request, env: Env): Promise<Response> {
-  const body = (await request.json()) as { message?: string; session_id?: string };
+  const body = (await request.json()) as {
+    message?: string;
+    session_id?: string;
+    current_file_id?: string;
+    ide_context?: ArchitectChatContext;
+  };
   const message = body.message?.trim();
   if (!message) return new Response("message is required", { status: 400 });
 
-  const sources = await retrieveVaultSources(env, message, 5);
+  const currentFileId =
+    typeof body.ide_context?.current_file_id === "string" && body.ide_context.current_file_id.trim()
+      ? body.ide_context.current_file_id.trim()
+      : typeof body.current_file_id === "string" && body.current_file_id.trim()
+        ? body.current_file_id.trim()
+        : null;
+  const ideContext = {
+    ...(body.ide_context ?? {}),
+    current_file_id: currentFileId ?? undefined,
+  } satisfies ArchitectChatContext;
+  const sources = await retrieveVaultSources(env, message, 5, ideContext);
   const sessionId = body.session_id || (await createChatSession(env));
   await db(env).insert("architect_chat_messages", {
     session_id: sessionId,
@@ -337,17 +353,171 @@ interface WikiPageSearchRow {
   } | null;
 }
 
+interface CurrentFileRow {
+  id: string;
+  path: string;
+  folder?: string | null;
+  text_content?: string | null;
+  deleted_at?: string | null;
+}
+
 async function retrieveVaultSources(
   env: Env,
   query: string,
   limit: number,
+  ideContext: ArchitectChatContext = {},
 ): Promise<ArchitectChatSource[]> {
-  const rawSources = await retrieveRawVaultSources(env, query, limit);
-  const wikiSources = await retrieveWikiPageSources(env, query, limit);
+  const currentFile = ideContext.current_file_id
+    ? await fetchCurrentFile(env, ideContext.current_file_id)
+    : null;
+  const currentSources = currentFile
+    ? await retrieveCurrentFileSources(env, currentFile, query, Math.min(3, limit))
+    : [];
+  const folderSources =
+    currentFile && isFolderContextQuestion(query)
+      ? await retrieveCurrentFolderSources(env, currentFile, query, Math.max(limit - 1, 1))
+      : [];
+  const focusedSources = dedupeSources([...currentSources, ...folderSources]).slice(0, limit);
 
-  return [...rawSources, ...wikiSources]
+  if (focusedSources.length && currentFile && !isWiderVaultQuestion(query)) {
+    return focusedSources;
+  }
+
+  const remainingLimit = Math.max(limit - focusedSources.length, 1);
+  const rawSources = await retrieveRawVaultSources(env, query, remainingLimit);
+  const wikiSources = await retrieveWikiPageSources(env, query, remainingLimit);
+
+  return dedupeSources([...focusedSources, ...rawSources, ...wikiSources])
     .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
     .slice(0, limit);
+}
+
+async function fetchCurrentFile(env: Env, fileId: string): Promise<CurrentFileRow | null> {
+  const fileRows = (await db(env).query("files", {
+    id: `eq.${fileId}`,
+    deleted_at: "is.null",
+    select: "id,path,folder,text_content,deleted_at",
+    limit: "1",
+  })) as CurrentFileRow[];
+  return fileRows[0] ?? null;
+}
+
+async function retrieveCurrentFileSources(
+  env: Env,
+  file: CurrentFileRow,
+  query: string,
+  limit: number,
+): Promise<ArchitectChatSource[]> {
+  const terms = tokenizeQuery(query);
+  const sources: ArchitectChatSource[] = [];
+  if (file.text_content?.trim()) {
+    sources.push({
+      file_id: file.id,
+      path: file.path,
+      title: file.path.split("/").pop() ?? file.path,
+      snippet: wikiSnippet(file.text_content, terms),
+      score: 10,
+      source_kind: "file",
+      evidence_scope: "current_file",
+    });
+  }
+
+  const digest = await retrieveWikiDigestForFile(env, file.id, terms);
+  if (digest) sources.push(digest);
+
+  if (sources.length < limit) {
+    const chunks = (await db(env).query("source_chunks", {
+      file_id: `eq.${file.id}`,
+      select: "*",
+      order: "chunk_index.asc",
+      limit: "5",
+    })) as { chunk_index: number; content: string }[];
+    for (const chunk of chunks) {
+      if (!chunk.content.trim()) continue;
+      sources.push({
+        file_id: file.id,
+        path: `${file.path} chunk ${chunk.chunk_index}`,
+        title: file.path.split("/").pop() ?? file.path,
+        snippet: wikiSnippet(chunk.content, terms),
+        score: 8.5 - chunk.chunk_index / 100,
+        source_kind: "file",
+        evidence_scope: "current_file",
+      });
+      if (sources.length >= limit) break;
+    }
+  }
+
+  return sources.slice(0, limit);
+}
+
+async function retrieveCurrentFolderSources(
+  env: Env,
+  currentFile: CurrentFileRow,
+  query: string,
+  limit: number,
+): Promise<ArchitectChatSource[]> {
+  const folder = currentFileFolder(currentFile);
+  const params: Record<string, string> = {
+    id: `neq.${currentFile.id}`,
+    deleted_at: "is.null",
+    select: "id,path,folder,text_content",
+    order: "updated_at.desc",
+    limit: "20",
+  };
+  if (folder) params.folder = `eq.${folder}`;
+  else params.folder = "is.null";
+
+  const rows = (await db(env).query("files", params)) as CurrentFileRow[];
+  const terms = tokenizeQuery(query);
+  return rows
+    .filter((file) => file.text_content?.trim())
+    .map((file, index) => ({
+      file_id: file.id,
+      path: file.path,
+      title: file.path.split("/").pop() ?? file.path,
+      snippet: wikiSnippet(file.text_content ?? "", terms),
+      score: 7 - index / 100,
+      source_kind: "file" as const,
+      evidence_scope: "current_folder" as const,
+    }))
+    .slice(0, limit);
+}
+
+async function retrieveWikiDigestForFile(
+  env: Env,
+  fileId: string,
+  terms: string[],
+): Promise<ArchitectChatSource | null> {
+  const nodes = (await db(env).query("wiki_nodes", {
+    source_file_id: `eq.${fileId}`,
+    kind: "eq.synthesis",
+    status: "in.(draft,published)",
+    select: "id,kind,title,source_file_id",
+    order: "updated_at.desc",
+    limit: "1",
+  })) as { id: string; kind: WikiNodeKind; title: string; source_file_id: string }[];
+  const node = nodes[0];
+  if (!node) return null;
+
+  const pages = (await db(env).query("wiki_pages", {
+    node_id: `eq.${node.id}`,
+    select: "title,content",
+    limit: "1",
+  })) as { title: string; content: string }[];
+  const page = pages[0];
+  if (!page) return null;
+
+  return {
+    file_id: fileId,
+    path: `Wiki digest: ${node.title}`,
+    title: page.title,
+    snippet: wikiSnippet(page.content, terms),
+    score: 9.5,
+    source_kind: "wiki",
+    evidence_scope: "wiki_digest",
+    wiki_node_id: node.id,
+    wiki_node_kind: node.kind,
+  };
 }
 
 async function retrieveRawVaultSources(
@@ -426,6 +596,7 @@ function blendByRRF(fts: SearchRow[], vec: SearchRow[], limit: number): Architec
       snippet: ftsSnippet ?? row.snippet,
       score,
       source_kind: "file",
+      evidence_scope: "vault_file",
     }));
 }
 
@@ -452,7 +623,13 @@ async function retrieveWikiPageSources(
   const sources: ArchitectChatSource[] = [];
   for (const row of rows) {
     const node = row.wiki_nodes;
-    if (!node?.source_file_id || !["draft", "published"].includes(node.status)) continue;
+    if (
+      !node?.source_file_id ||
+      node.kind !== "synthesis" ||
+      !["draft", "published"].includes(node.status)
+    ) {
+      continue;
+    }
     const score = scoreWikiPage(row, terms, query);
     if (score <= 0) continue;
     sources.push({
@@ -462,12 +639,27 @@ async function retrieveWikiPageSources(
       snippet: wikiSnippet(row.content, terms),
       score: 0.02 + score / 100,
       source_kind: "wiki" as const,
+      evidence_scope: "wiki_digest",
       wiki_node_id: node.id,
       wiki_node_kind: node.kind,
     });
   }
 
-  return sources.sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, limit);
+  const sourceFileIds = [...new Set(sources.map((source) => source.file_id))];
+  const liveRows = sourceFileIds.length
+    ? ((await db(env).query("files", {
+        id: `in.(${sourceFileIds.join(",")})`,
+        deleted_at: "is.null",
+        select: "id",
+        limit: String(sourceFileIds.length),
+      })) as { id: string }[])
+    : [];
+  const liveFileIds = new Set(liveRows.map((row) => row.id));
+
+  return sources
+    .filter((source) => liveFileIds.has(source.file_id))
+    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+    .slice(0, limit);
 }
 
 function tokenizeQuery(query: string): string[] {
@@ -479,6 +671,34 @@ function tokenizeQuery(query: string): string[] {
         .map((term) => term.trim())
         .filter((term) => term.length >= 3),
     ),
+  );
+}
+
+function currentFileFolder(file: CurrentFileRow): string | null {
+  if (file.folder?.trim()) return file.folder.trim();
+  const idx = file.path.lastIndexOf("/");
+  return idx > 0 ? file.path.slice(0, idx) : null;
+}
+
+function dedupeSources(sources: ArchitectChatSource[]): ArchitectChatSource[] {
+  const seen = new Set<string>();
+  return sources.filter((source) => {
+    const key = `${source.source_kind ?? "file"}:${source.wiki_node_id ?? source.file_id}:${source.evidence_scope ?? "vault"}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function isFolderContextQuestion(query: string): boolean {
+  return /\b(folder|same folder|nearby|related notes?|neighboring notes?|sibling notes?|project folder|area folder|context around this|other notes here)\b/i.test(
+    query,
+  );
+}
+
+function isWiderVaultQuestion(query: string): boolean {
+  return /\b(vault|all notes?|everything|entire vault|across notes?|across the vault|other files?|other notes?|search everywhere|global|outside this file|not just this file)\b/i.test(
+    query,
   );
 }
 
@@ -516,7 +736,9 @@ async function askArchitect(
   if (isDeterministicArchitect(env)) return deterministicChatAnswer(sources);
 
   const context = sources
-    .map((source, index) => `[${index + 1}] ${source.path}\n${source.snippet}`)
+    .map(
+      (source, index) => `[${index + 1}] ${sourceLabel(source)}: ${source.path}\n${source.snippet}`,
+    )
     .join("\n\n");
 
   const answer = await askLLM(env, `Vault context:\n${context}\n\nQuestion: ${message}`, {
@@ -534,10 +756,17 @@ function isDeterministicArchitect(env: Env): boolean {
 function deterministicChatAnswer(sources: ArchitectChatSource[]): string {
   const cited = sources
     .slice(0, 3)
-    .map((source, index) => `${source.snippet} [${index + 1}]`)
+    .map((source, index) => `${sourceLabel(source)}: ${source.snippet} [${index + 1}]`)
     .join("\n\n");
   return (
     cited ||
     "I do not know from the vault. I could not find any vault sources that support an answer."
   );
+}
+
+function sourceLabel(source: ArchitectChatSource): string {
+  if (source.evidence_scope === "current_file") return "Current file";
+  if (source.evidence_scope === "current_folder") return "Current folder";
+  if (source.evidence_scope === "wiki_digest") return "Wiki digest";
+  return "Vault file";
 }

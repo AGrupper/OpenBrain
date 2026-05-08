@@ -22,6 +22,7 @@ export async function runLinker(env: Env, opts: LinkerOptions = {}): Promise<voi
 
   const files = (await db(env).query("files", {
     needs_linking: "eq.true",
+    deleted_at: "is.null",
     select: "*",
     limit: String(max),
   })) as VaultFile[];
@@ -42,6 +43,7 @@ export async function runLinker(env: Env, opts: LinkerOptions = {}): Promise<voi
 export async function runLinkerForFile(env: Env, fileId: string): Promise<void> {
   const rows = (await db(env).query("files", {
     id: `eq.${fileId}`,
+    deleted_at: "is.null",
     select: "*",
   })) as VaultFile[];
   if (!rows.length) return;

@@ -787,7 +787,7 @@ describe("parseFilesQuery", () => {
   it("defaults to select=* and order=updated_at.desc with no params", () => {
     const { params, error } = parseFilesQuery(new URLSearchParams());
     expect(error).toBeUndefined();
-    expect(params).toEqual({ order: "updated_at.desc", select: "*" });
+    expect(params).toEqual({ deleted_at: "is.null", order: "updated_at.desc", select: "*" });
   });
 
   it("translates needs_linking/needs_tagging/needs_embedding=true to eq.true", () => {
@@ -1123,15 +1123,17 @@ describe("handleFiles — PATCH /files/:id with Markdown text_content", () => {
 });
 
 describe("handleFiles — DELETE /files?path=", () => {
-  it("looks up by path, deletes R2 object, then deletes DB row", async () => {
+  it("looks up by path, then soft-deletes the DB row", async () => {
     const fetchMock = vi
       .fn()
       // 1st call: db.query by path
       .mockResolvedValueOnce(
         new Response(JSON.stringify([{ id: "row-1", path: "notes/x.md" }]), { status: 200 }),
       )
-      // 2nd call: db.delete
-      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+      // 2nd call: db.patch soft delete
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([{ id: "row-1", path: "notes/x.md" }]), { status: 200 }),
+      );
     vi.stubGlobal("fetch", fetchMock);
     const env = makeEnv();
     const req = makeRequest("https://api.openbrain.dev/files?path=notes/x.md", {
@@ -1139,10 +1141,13 @@ describe("handleFiles — DELETE /files?path=", () => {
     });
     const res = await handleFiles(req, env, new URL(req.url));
     expect(res.status).toBe(204);
-    expect(env.VAULT_BUCKET.delete).toHaveBeenCalledWith("notes/x.md");
+    expect(env.VAULT_BUCKET.delete).not.toHaveBeenCalled();
     const calls = fetchMock.mock.calls as unknown[][];
     const queryUrl = String(calls[0]?.[0] ?? "");
+    const patchUrl = String(calls[1]?.[0] ?? "");
     expect(queryUrl).toContain("path=eq.notes%2Fx.md");
+    expect(patchUrl).toContain("id=eq.row-1");
+    expect(calls[1]?.[1]).toMatchObject({ method: "PATCH" });
   });
 
   it("returns 204 idempotently when no row matches the path", async () => {

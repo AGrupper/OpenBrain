@@ -45,6 +45,16 @@ describe("handleWiki", () => {
             created_at: "now",
             updated_at: "now",
           },
+          {
+            id: "node-2",
+            kind: "synthesis",
+            title: "Related synthesis",
+            slug: "related-synthesis",
+            status: "draft",
+            source_file_id: "file-2",
+            created_at: "now",
+            updated_at: "now",
+          },
         ];
       }
       if (table === "wiki_edges") {
@@ -60,6 +70,9 @@ describe("handleWiki", () => {
           },
         ];
       }
+      if (table === "files") {
+        return [{ id: "file-1" }, { id: "file-2" }];
+      }
       return [];
     });
 
@@ -68,7 +81,7 @@ describe("handleWiki", () => {
     const body = (await res.json()) as WikiGraphResponse;
 
     expect(res.status).toBe(200);
-    expect(body.nodes).toHaveLength(1);
+    expect(body.nodes).toHaveLength(2);
     expect(body.nodes[0]).toMatchObject({ status: "draft" });
     expect(body.edges).toHaveLength(1);
     expect(mocks.query).toHaveBeenCalledWith(

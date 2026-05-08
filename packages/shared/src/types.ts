@@ -1,5 +1,5 @@
 export type FileStatus = "stored" | "pending_upload" | "processing" | "error";
-export type FileSourceType = "file" | "webpage" | "pdf" | "youtube";
+export type FileSourceType = "file" | "webpage" | "pdf" | "youtube" | "notion" | "apple_notes";
 export type FileExtractionStatus = "stored" | "extracted" | "no_text" | "failed";
 export type ArchitectJobStatus = "pending" | "processing" | "suggestions_created" | "failed";
 export type ArchitectSuggestionStatus = "pending" | "approved" | "rejected";
@@ -42,10 +42,56 @@ export interface VaultFile {
   source_url?: string | null;
   extraction_status?: FileExtractionStatus;
   extraction_error?: string | null;
+  deleted_at?: string | null;
+  deleted_reason?: string | null;
   needs_embedding?: boolean;
   needs_linking?: boolean;
   needs_tagging?: boolean;
   needs_wiki?: boolean;
+}
+
+export type SyncSourceType = "notion" | "apple_notes";
+export type SyncSourceStatus = "active" | "paused" | "error";
+export type SyncItemStatus = "synced" | "skipped" | "failed";
+
+export interface SyncSource {
+  id: string;
+  type: SyncSourceType;
+  name: string;
+  config: Record<string, unknown>;
+  status: SyncSourceStatus;
+  last_synced_at?: string | null;
+  last_error?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SyncItem {
+  id: string;
+  source_id: string;
+  external_id: string;
+  file_id?: string | null;
+  external_url?: string | null;
+  content_hash?: string | null;
+  status: SyncItemStatus;
+  metadata: Record<string, unknown>;
+  last_seen_at: string;
+  last_synced_at?: string | null;
+  last_error?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SyncFailure {
+  external_id: string;
+  error: string;
+}
+
+export interface SyncSummary {
+  imported: number;
+  skipped: number;
+  failed: number;
+  failures?: SyncFailure[];
 }
 
 export interface VaultFolder {
@@ -108,9 +154,17 @@ export interface ArchitectChatSource {
   snippet: string;
   score?: number;
   source_kind?: "file" | "wiki";
+  evidence_scope?: "current_file" | "current_folder" | "wiki_digest" | "vault_file";
   title?: string;
   wiki_node_id?: string | null;
   wiki_node_kind?: WikiNodeKind;
+}
+
+export interface ArchitectChatContext {
+  current_file_id?: string;
+  current_path?: string;
+  current_folder?: string | null;
+  surface?: "reader" | "chat";
 }
 
 export interface ArchitectChatMessage {

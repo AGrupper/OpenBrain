@@ -92,7 +92,7 @@ function normalizeWikiNode(row: WikiPageSearchRow): WikiNodeSearchRef | null {
 
 function scoreWikiPage(row: WikiPageSearchRow, terms: string[], query: string): number {
   const node = normalizeWikiNode(row);
-  if (!node || node.status === "archived") return 0;
+  if (!node || node.status === "archived" || node.kind !== "synthesis") return 0;
 
   const haystack = `${row.title ?? ""} ${node.title ?? ""} ${row.content ?? ""}`.toLowerCase();
   const exact = query.toLowerCase();
@@ -157,6 +157,7 @@ async function searchWikiPages(env: Env, query: string, limit: number): Promise<
 
   const sourceRows = (await db(env).query("files", {
     id: `in.(${sourceIds.join(",")})`,
+    deleted_at: "is.null",
     select: "id,path,size,sha256,mime,updated_at",
     limit: String(sourceIds.length),
   })) as SearchRow[];
@@ -198,6 +199,7 @@ export async function handleSearch(request: Request, env: Env, url: URL): Promis
 
     const pathResults = (await db(env).query("files", {
       path: `ilike.*${query.trim()}*`,
+      deleted_at: "is.null",
       select: "id,path,size,sha256,mime,updated_at",
       limit: String(limit),
       order: "updated_at.desc",

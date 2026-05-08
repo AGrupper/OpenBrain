@@ -72,6 +72,7 @@ export async function runWikiBuilder(env: Env, opts: WikiBuilderOptions = {}): P
 
   const files = (await db(env).query("files", {
     needs_wiki: "eq.true",
+    deleted_at: "is.null",
     select: "*",
     limit: String(max),
   })) as FileForWiki[];
@@ -99,6 +100,7 @@ export async function runWikiBuilderForFile(
     (
       (await db(env).query("files", {
         id: `eq.${fileId}`,
+        deleted_at: "is.null",
         select: "*",
         limit: "1",
       })) as FileForWiki[]
@@ -223,105 +225,32 @@ async function writeWikiDraft(
     summary: generated.summary || null,
     source_file_id: file.id,
   });
-  await writePageRevision(env, sourceNode, file, sourceTitle, sourcePageContent(file, generated), [
-    chunks[0],
-  ]);
 
   const synthesis = generated.synthesis;
-  const synthesisCitations = synthesis ? validCitations(synthesis.chunk_indexes, chunkByIndex) : [];
-  let synthesisNode: WikiNode | null = null;
-  if (synthesisCitations.length) {
-    const synthesisTitle = synthesis.title?.trim() || `${sourceTitle} synthesis`;
-    synthesisNode = await upsertWikiNode(env, {
+  const synthesisCitations = validCitations(synthesis?.chunk_indexes, chunkByIndex);
+  const digestCitations = synthesisCitations.length ? synthesisCitations : chunks.slice(0, 1);
+  if (digestCitations.length) {
+    const digestTitle = sourceTitle;
+    const digestNode = await upsertWikiNode(env, {
       kind: "synthesis",
-      title: synthesisTitle,
-      slug: `synthesis-${file.id}`,
+      title: digestTitle,
+      slug: `digest-${file.id}`,
       status: "draft",
       summary: generated.summary || null,
       source_file_id: file.id,
     });
     await writePageRevision(
       env,
-      synthesisNode,
+      digestNode,
       file,
-      synthesisTitle,
-      synthesis.content || `# ${synthesisTitle}\n\n${generated.summary}`,
-      synthesisCitations,
+      digestTitle,
+      digestPageContent(file, generated, synthesis?.content, digestTitle),
+      digestCitations,
     );
-    await upsertWikiEdge(env, synthesisNode.id, sourceNode.id, "derived_from", file.id, {
+    await upsertWikiEdge(env, digestNode.id, sourceNode.id, "derived_from", file.id, {
       confidence: 0.85,
-      reason: "The synthesis was generated from the cited source chunks.",
+      reason: "The digest was generated from the cited source chunks.",
     });
-  }
-
-  const topicNodes: WikiNode[] = [];
-  const topics = Array.isArray(generated.topics) ? generated.topics : [];
-  for (const topic of topics.slice(0, 6)) {
-    const citations = validCitations(topic.chunk_indexes, chunkByIndex);
-    if (!citations.length) continue;
-    const title = topic.title?.trim();
-    if (!title) continue;
-    const node = await upsertWikiNode(env, {
-      kind: "topic",
-      title,
-      slug: `topic-${slugify(title)}-${file.id}`,
-      status: "draft",
-      summary: topic.summary || null,
-      source_file_id: file.id,
-    });
-    await writePageRevision(
-      env,
-      node,
-      file,
-      title,
-      topicPageContent(title, topic.summary),
-      citations,
-    );
-    await upsertWikiEdge(env, node.id, sourceNode.id, "mentions", file.id, {
-      confidence: 0.75,
-      reason: "The source chunks mention this topic.",
-    });
-    if (synthesisNode) {
-      await upsertWikiEdge(env, node.id, synthesisNode.id, "part_of", file.id, {
-        confidence: 0.7,
-        reason: "The topic is part of the generated synthesis for this source.",
-      });
-    }
-    topicNodes.push(node);
-  }
-
-  const claims = Array.isArray(generated.claims) ? generated.claims : [];
-  for (const claim of claims.slice(0, 8)) {
-    const citations = validCitations(claim.chunk_indexes, chunkByIndex);
-    if (!citations.length) continue;
-    const title = claim.title?.trim();
-    const content = claim.content?.trim();
-    if (!title || !content) continue;
-    const node = await upsertWikiNode(env, {
-      kind: "claim",
-      title,
-      slug: `claim-${slugify(title)}-${file.id}`,
-      status: "draft",
-      summary: content,
-      source_file_id: file.id,
-    });
-    await writePageRevision(env, node, file, title, claimPageContent(title, content), citations);
-    await upsertWikiEdge(env, node.id, sourceNode.id, "derived_from", file.id, {
-      confidence: 0.8,
-      reason: "The claim is grounded in cited source chunks.",
-    });
-    if (synthesisNode) {
-      await upsertWikiEdge(env, node.id, synthesisNode.id, "supports", file.id, {
-        confidence: 0.7,
-        reason: "The claim supports the generated synthesis.",
-      });
-    }
-    if (topicNodes[0]) {
-      await upsertWikiEdge(env, node.id, topicNodes[0].id, "related_to", file.id, {
-        confidence: 0.65,
-        reason: "The claim and topic were extracted from the same source.",
-      });
-    }
   }
 }
 
@@ -455,14 +384,23 @@ async function upsertWikiEdge(
   }
 }
 
-function sourcePageContent(file: FileForWiki, generated: WikiDraftResult): string {
-  return `# ${generated.title || file.path}\n\n${generated.summary || "Draft source summary."}\n\nSource: ${file.path}`;
-}
+function digestPageContent(
+  file: FileForWiki,
+  generated: WikiDraftResult,
+  generatedContent: string | undefined,
+  title: string,
+): string {
+  const content = generatedContent?.trim();
+  if (content) return content.startsWith("#") ? content : `# ${title}\n\n${content}`;
 
-function topicPageContent(title: string, summary: string): string {
-  return `# ${title}\n\n${summary || "Draft topic extracted from the source."}`;
-}
+  const summary = generated.summary?.trim() || "Draft digest generated from this source.";
+  return `# ${title}
 
-function claimPageContent(title: string, content: string): string {
-  return `# ${title}\n\n${content}`;
+## Summary
+
+${summary}
+
+## Evidence
+
+The digest is grounded in stored source chunks from ${file.path}.`;
 }

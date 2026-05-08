@@ -60,6 +60,7 @@ async function handleWikiGraph(env: Env): Promise<Response> {
   const [nodes, edges] = await Promise.all([
     db(env).query("wiki_nodes", {
       status: VISIBLE_STATUSES,
+      kind: "eq.synthesis",
       select: "*",
       order: "updated_at.desc",
       limit: "500",
@@ -72,7 +73,26 @@ async function handleWikiGraph(env: Env): Promise<Response> {
     }) as Promise<WikiEdge[]>,
   ]);
 
-  const body: WikiGraphResponse = { nodes, edges };
+  const sourceFileIds = [
+    ...new Set(nodes.map((node) => node.source_file_id).filter((id): id is string => Boolean(id))),
+  ];
+  const liveFileRows = sourceFileIds.length
+    ? ((await db(env).query("files", {
+        id: `in.(${sourceFileIds.join(",")})`,
+        deleted_at: "is.null",
+        select: "id",
+        limit: String(sourceFileIds.length),
+      })) as { id: string }[])
+    : [];
+  const liveFileIds = new Set(liveFileRows.map((row) => row.id));
+  const visibleNodes = nodes.filter(
+    (node) => node.source_file_id && liveFileIds.has(node.source_file_id),
+  );
+  const visibleNodeIds = new Set(visibleNodes.map((node) => node.id));
+  const visibleEdges = edges.filter(
+    (edge) => visibleNodeIds.has(edge.source_node_id) && visibleNodeIds.has(edge.target_node_id),
+  );
+  const body: WikiGraphResponse = { nodes: visibleNodes, edges: visibleEdges };
   return Response.json(body);
 }
 

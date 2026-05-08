@@ -131,6 +131,9 @@ export function ArchitectChat({ onSelectFile }: Props) {
 }
 
 function formatSourceKind(source: ArchitectChatSource): string {
+  if (source.evidence_scope === "current_file") return "Current file";
+  if (source.evidence_scope === "current_folder") return "Current folder";
+  if (source.evidence_scope === "wiki_digest") return "Wiki digest";
   if (source.source_kind === "wiki") {
     return source.wiki_node_kind ? `Wiki ${source.wiki_node_kind}` : "Wiki";
   }
@@ -148,7 +151,7 @@ const styles: Record<string, React.CSSProperties> = {
   header: {
     padding: "var(--spacing-6) var(--spacing-8) var(--spacing-4)",
     borderBottom: "1px solid var(--border-color)",
-    background: "var(--bg-surface)",
+    background: "transparent",
   },
   title: {
     fontSize: 22,
@@ -178,15 +181,15 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: "var(--radius-md)",
     border: "1px solid var(--border-color)",
     padding: "var(--spacing-4)",
-    boxShadow: "var(--shadow-sm)",
+    boxShadow: "none",
   },
   userMessage: {
     alignSelf: "flex-end",
-    background: "var(--bg-surface-active)",
+    background: "rgba(139, 124, 246, 0.12)",
   },
   architectMessage: {
     alignSelf: "flex-start",
-    background: "var(--bg-surface)",
+    background: "transparent",
   },
   messageRole: {
     color: "var(--text-muted)",
@@ -230,9 +233,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   sourceKind: {
     flex: "0 0 auto",
-    border: "1px solid rgba(96, 165, 250, 0.45)",
+    border: "1px solid var(--border-color)",
     borderRadius: "var(--radius-sm)",
-    background: "rgba(37, 99, 235, 0.14)",
+    background: "var(--bg-surface-hover)",
     color: "var(--accent-primary)",
     padding: "2px 6px",
     fontSize: 11,
@@ -267,7 +270,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   input: {
     flex: 1,
-    border: "1px solid var(--border-highlight)",
+    border: "1px solid var(--border-color)",
     background: "var(--bg-base)",
     color: "var(--text-primary)",
     borderRadius: "var(--radius-sm)",

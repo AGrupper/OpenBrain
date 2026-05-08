@@ -58,10 +58,10 @@ function makeDraft(overrides: Partial<WikiDraftResult> = {}): WikiDraftResult {
   return {
     title: "source.md",
     summary: "The source supports a generated claim.",
-    topics: [{ title: "generated topic", summary: "A supported topic.", chunk_indexes: [0] }],
-    claims: [{ title: "supported claim", content: "A supported claim.", chunk_indexes: [0] }],
+    topics: [],
+    claims: [],
     synthesis: {
-      title: "source.md synthesis",
+      title: "source.md",
       content: "# source.md\n\nA supported synthesis.",
       chunk_indexes: [0],
     },
@@ -165,11 +165,12 @@ describe("runWikiBuilderForFile", () => {
     expect(mocks.tables.wiki_nodes).toHaveLength(0);
   });
 
-  it("drops generated claims without valid chunk citations", async () => {
+  it("creates one visible digest page and ignores separate topic or claim nodes", async () => {
     const file = makeFile();
     resetDb({ files: [file as unknown as Record<string, unknown>] });
     mocks.askArchitectForWikiDraft.mockResolvedValue(
       makeDraft({
+        topics: [{ title: "generated topic", summary: "A supported topic.", chunk_indexes: [0] }],
         claims: [
           { title: "supported claim", content: "A supported claim.", chunk_indexes: [0] },
           { title: "unsupported claim", content: "No matching chunk.", chunk_indexes: [999] },
@@ -179,42 +180,65 @@ describe("runWikiBuilderForFile", () => {
 
     await runWikiBuilderForFile(makeEnv(), file.id, file);
 
-    const claims = mocks.tables.wiki_nodes.filter((node) => node.kind === "claim");
-    expect(claims.map((claim) => claim.title)).toEqual(["supported claim"]);
+    const visibleNodes = mocks.tables.wiki_nodes.filter((node) => node.kind !== "source");
+    expect(visibleNodes).toHaveLength(1);
+    expect(visibleNodes[0]).toMatchObject({ kind: "synthesis", title: "source.md" });
+    expect(mocks.tables.wiki_nodes.some((node) => node.kind === "claim")).toBe(false);
+    expect(mocks.tables.wiki_nodes.some((node) => node.kind === "topic")).toBe(false);
     expect(mocks.tables.wiki_citations.length).toBeGreaterThan(0);
     expect(mocks.tables.files[0]).toMatchObject({ needs_wiki: false, path: file.path });
   });
 
-  it("archives stale source-specific draft nodes and edges before regenerating", async () => {
-    const firstFile = makeFile();
-    resetDb({ files: [firstFile as unknown as Record<string, unknown>] });
-    mocks.askArchitectForWikiDraft.mockResolvedValueOnce(
-      makeDraft({
-        claims: [{ title: "old claim", content: "Old supported claim.", chunk_indexes: [0] }],
-      }),
-    );
-    await runWikiBuilderForFile(makeEnv(), firstFile.id, firstFile);
-
-    const changedFile = makeFile({
-      sha256: "sha-2",
-      text_content: "# Source\n\nThis source now supports a new generated claim.",
+  it("archives stale source-specific topic and claim nodes while keeping one digest current", async () => {
+    const file = makeFile();
+    resetDb({
+      files: [file as unknown as Record<string, unknown>],
+      wiki_nodes: [
+        {
+          id: "old-topic",
+          kind: "topic",
+          title: "old topic",
+          slug: `topic-old-${file.id}`,
+          status: "draft",
+          source_file_id: file.id,
+        },
+        {
+          id: "old-claim",
+          kind: "claim",
+          title: "old claim",
+          slug: `claim-old-${file.id}`,
+          status: "draft",
+          source_file_id: file.id,
+        },
+      ],
+      wiki_edges: [
+        {
+          id: "old-edge",
+          source_node_id: "old-claim",
+          target_node_id: "old-topic",
+          type: "related_to",
+          status: "draft",
+          source_file_id: file.id,
+        },
+      ],
     });
-    Object.assign(mocks.tables.files[0], changedFile, { needs_wiki: true });
-    mocks.askArchitectForWikiDraft.mockResolvedValueOnce(
-      makeDraft({
-        claims: [{ title: "new claim", content: "New supported claim.", chunk_indexes: [0] }],
-      }),
+    mocks.askArchitectForWikiDraft.mockResolvedValueOnce(makeDraft());
+
+    await runWikiBuilderForFile(makeEnv(), file.id, file);
+
+    expect(mocks.tables.wiki_nodes.find((node) => node.id === "old-topic")).toMatchObject({
+      status: "archived",
+    });
+    expect(mocks.tables.wiki_nodes.find((node) => node.id === "old-claim")).toMatchObject({
+      status: "archived",
+    });
+    expect(mocks.tables.wiki_edges.find((edge) => edge.id === "old-edge")).toMatchObject({
+      status: "archived",
+    });
+    const currentVisible = mocks.tables.wiki_nodes.filter(
+      (node) => node.kind !== "source" && node.status === "draft",
     );
-
-    await runWikiBuilderForFile(makeEnv(), changedFile.id, changedFile);
-
-    const oldClaim = mocks.tables.wiki_nodes.find((node) => node.title === "old claim");
-    const newClaim = mocks.tables.wiki_nodes.find((node) => node.title === "new claim");
-    expect(oldClaim).toMatchObject({ status: "archived" });
-    expect(newClaim).toMatchObject({ status: "draft" });
-    expect(mocks.tables.wiki_edges.some((edge) => edge.status === "archived")).toBe(true);
-    expect(
-      mocks.tables.wiki_revisions.filter((row) => row.source_file_id === firstFile.id).length,
-    ).toBeGreaterThan(1);
+    expect(currentVisible).toHaveLength(1);
+    expect(currentVisible[0]).toMatchObject({ kind: "synthesis", title: "source.md" });
   });
 });
