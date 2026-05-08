@@ -235,6 +235,8 @@ Last verified on 2026-05-05 after the draft-visible wiki implementation:
 - The raw file reader now fetches related visible non-source wiki nodes through
   `GET /wiki/files/:id/nodes` and shows them alongside existing connected-file context. The focused
   Worker wiki route test passes with 4 tests.
+- After the search/chat/reader quality slices on 2026-05-08, the full suite passed with
+  `npm.cmd test`: 12 test files and 121 tests.
 
 Earlier verified on 2026-05-05 after the no-op Architect suggestion fix:
 
