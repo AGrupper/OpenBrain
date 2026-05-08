@@ -2,7 +2,10 @@
 
 ## Summary
 
-OpenBrain is a private, cloud-accessible second brain for dumping, reading, organizing, searching, and connecting personal knowledge. It should feel similar to Obsidian in its folder/list and graph mental model, but with stronger AI assistance and without relying on Obsidian sync or storage limits.
+OpenBrain is a private, cloud-accessible second brain for dumping, reading, organizing, searching,
+and connecting personal knowledge. It should feel like a calm daily note-taking workspace with an
+Obsidian-like knowledge layer, Apple Notes-style navigation, and stronger AI assistance than a
+plain file browser.
 
 The product center is a knowledge vault, not a generic cloud drive. Users should be able to add notes and files, browse them like a deliberate file system, view relationships in a graph, and rely on an AI librarian to suggest summaries, tags, links, folders, and project-relevant actions. The AI suggests; the user approves important structure changes.
 
@@ -17,14 +20,18 @@ The product center is a knowledge vault, not a generic cloud drive. Users should
 
 ## Core Requirements
 
-- Manual local file import is the core ingestion path.
-- Folder/List mode must let users browse, read, and inspect connected files.
-- Graph mode must show meaningful approved connections, not noisy speculative links.
+- Manual local file import, Markdown notes, URL import, Notion sync, and Apple Notes export-folder
+  sync are core ingestion paths.
+- Notes/List mode must let users browse, read, edit Markdown, inspect connected files, and manage
+  soft-deleted notes.
+- Graph mode must show the Architect understanding layer: one useful wiki digest node per processed
+  source by default, not noisy raw file clutter.
 - AI suggestions must go through a review workflow before shaping the vault.
-- The Architect chat must answer only from retrieved vault context and cite sources.
+- The Architect chat must answer only from retrieved vault context and cite sources, prioritizing
+  the current note when opened from the reader.
 - Related-file context should be visible while reading.
-- Editing Markdown notes and page comments are future workspace capabilities, not the first priority.
-- Notion, Apple Notes, and other connectors are long-term goals after the vault experience is useful.
+- Generated wiki digests should be readable, cited, and reversible through history/provenance.
+- Export and deletion must be trustworthy enough for daily use.
 
 ## AI Behavior
 
@@ -42,12 +49,17 @@ The product center is a knowledge vault, not a generic cloud drive. Users should
 - Do not prioritize teams, sharing, or collaboration before the personal vault is excellent.
 - Do not deeply support every file type from the start.
 - Do not overbuild a rich editor before browsing, search, graph, and AI organization are worth using.
+- Do not treat generated wiki pages as user-authored notes.
+- Do not expose provider or sync secrets in the desktop app.
 
 ## Success Criteria
 
 - Files can be added quickly from the local computer.
 - The vault can be browsed in a clear folder/list structure.
 - A file can be opened, read, and inspected with connected context.
-- The graph shows meaningful approved relationships.
+- The graph shows useful digest nodes and source-backed relationships.
 - AI suggestions are deliberate, reviewable, and explainable.
-- The vault gets easier to search and navigate as more files are added.
+- The Architect can answer about the current note with relevant citations.
+- The vault can be exported locally with readable originals and a manifest.
+- The vault gets easier to search and navigate as more notes, files, URLs, and synced pages are
+  added.

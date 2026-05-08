@@ -52,6 +52,8 @@ The graph wiki answers: "What does OpenBrain understand?"
 - Backup/export is a daily-driver requirement: the desktop app should be able to write a readable
   local export with originals plus a manifest before any deeper sync or account work becomes
   mandatory.
+- Real login, multi-user isolation, OCR, and deep media understanding are deferred unless the target
+  changes; the current goal is a reliable single-user daily driver.
 
 ## Milestone Status
 
@@ -65,8 +67,8 @@ The graph wiki answers: "What does OpenBrain understand?"
 | 5. Broad Ingestion: Files And URLs    | In progress | Supported files and URLs become searchable vault items with clear processing state.                               |
 | 6. Embeddings And Media Understanding | Pending     | Search/chat can retrieve from raw files, media chunks, transcripts, and wiki pages.                               |
 | 7. Architect Recommendations          | Pending     | The Architect proactively recommends while user-owned material remains controlled.                                |
-| 8. Real Login                         | Pending     | Real login works and users cannot access each other's vault data.                                                 |
-| 9. Search, Chat, And Reader Quality   | Pending     | OpenBrain answers from the vault and shows where answers came from.                                               |
+| 8. Real Login                         | Deferred    | Real login works and users cannot access each other's vault data.                                                 |
+| 9. Search, Chat, And Reader Quality   | In progress | OpenBrain answers from the vault and shows where answers came from.                                               |
 | 10. Export, Delete, And Privacy       | In progress | Soft delete, restore, permanent delete, and first-pass desktop export work.                                       |
 | 11. Cross-Platform Desktop            | Pending     | App can be built and run on PC and Mac from documented steps.                                                     |
 
@@ -229,6 +231,8 @@ The graph wiki answers: "What does OpenBrain understand?"
 Warning: this milestone touches auth logic and database ownership. Stop for explicit approval before
 editing implementation files for this milestone.
 
+Daily-driver status: deferred. The app remains single-user/local-token based for now.
+
 - Use Supabase Auth.
 - Desktop signs in and sends user JWT to Worker.
 - Worker verifies JWT and scopes data by user.
@@ -242,8 +246,10 @@ editing implementation files for this milestone.
 - Done: Architect Chat retrieves from raw file search plus matching draft/published wiki pages, while
   persisting the underlying source file for wiki-backed chat citations. Chat citations now visibly
   distinguish wiki sources from raw file sources in the desktop UI.
-- Answers cite sources and refuse unsupported claims.
+- Done: Answers cite sources and refuse unsupported claims when retrieved context is insufficient.
 - Done: Reader shows related raw files and related non-source wiki nodes for the selected raw file.
+- Next polish: tighten current-note Architect answers, citation readability, and weak-context
+  refusal copy based on manual smoke findings.
 
 ### 10. Export, Delete, And Privacy
 
@@ -274,12 +280,12 @@ editing implementation files for this milestone.
 - Worker route tests for new ingestion, wiki, graph, and auth APIs.
 - Deterministic Architect smoke tests for PARA placement and wiki graph generation.
 - Manual smoke:
-  - Login.
   - Import files.
   - Add URL/YouTube.
+  - Sync Notion and Apple Notes export-folder sources.
   - Create Markdown note.
+  - Edit, rename, soft delete, restore, and permanently delete a note.
   - Approve PARA placement.
-  - Generate wiki graph nodes.
-  - Open graph node page.
+  - Open one-digest graph node page.
   - Ask chat question with citations.
   - Export vault.

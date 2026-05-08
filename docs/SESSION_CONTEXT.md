@@ -7,50 +7,18 @@ session so the next session can start from repo truth instead of chat history.
 
 - Branch: `master`
 - Remote: `origin/master`
-- Latest implementation commit before docs wrap-up: `23def5d` (`Add graph node detail panel`)
-- Before the 2026-05-05 publish step, the local branch was 6 commits ahead of `origin/master`.
-  Always re-check current sync state with `git status -sb` at session start.
-- Tracked working tree was clean at the 2026-05-05 wrap-up check.
+- Latest pushed stabilization checkpoint before this docs refresh: `48ed66e`
+  (`Update stabilization handoff`).
+- `git status -sb` was clean and synced with `origin/master` at the 2026-05-09 handoff refresh.
+- Always re-check current sync state with `git status -sb` at session start.
 - Current implementation direction is tracked in `docs/MASTER_PLAN.md`.
-- The 2026-05-05 follow-up suppresses no-op Architect folder/tag review suggestions and adds
-  regression coverage.
-- The later 2026-05-05 implementation adds the approved draft-visible Architect Wiki foundation:
-  migration `006_wiki.sql`, chunk citations, wiki nodes/pages/revisions/edges, Worker `/wiki`
-  routes, automatic wiki draft generation, and Graph UI support for generated wiki pages.
-- Manual draft-visible wiki smoke found one local regeneration gap: Markdown saves correctly set
-  `files.needs_wiki=true`, but the local `ctx.waitUntil` rebuild was not completing reliably.
-  Desktop Markdown saves now call `PATCH /files/:id?run_wiki=true`, and the Worker awaits just the
-  wiki rebuild for that explicit save path while keeping linker/tagger work in the background.
-- After checkpoint commit `d2821df`, Graph cleanup changed the default Graph surface to show only
-  conceptual wiki nodes (`topic`, `claim`, `synthesis`). Raw files and `source` wiki nodes are
-  hidden from the default graph and remain accessible through source/citation detail.
-- Milestone 2 is now complete based on the user's 2026-05-05 manual screenshots: approving the
-  fresh deterministic PARA folder and tag suggestions placed `openbrain-smoke-related-fresh.md`
-  under `Resources/smoke/related` with `architect-smoke` and `related` tags visible in the reader.
-- Starting commit for this session: `c37ab89` (`Add OpenBrain session context handoff`)
-- Pushed implementation commit: `4cc6d30` (`Fix vault filename search and stale reader state`)
-- Pushed handoff commit before browser smoke confirmation: `a55f089`
-  (`Update OpenBrain session context after search fix`)
-- Final handoff update records the browser smoke confirmation.
-- Current session fixed deterministic Architect smoke execution from `services/architect-agent`,
-  clarified local Worker env file usage, verified the review API loop against the running local
-  Worker, tightened Review Inbox reload behavior after decisions, and added the first Markdown
-  edit/save workspace slice.
-- The user confirmed the Markdown edit/save/search smoke works in the running app.
-- Overnight follow-up committed the Markdown workspace checkpoint locally as `f907a22`
-  (`Complete Markdown note workspace loop`) and committed the first safe Graph-First Architect Wiki
-  slice locally as `23def5d` (`Add graph node detail panel`). No migrations were added; graph node
-  details use existing raw files and approved links.
-- Current URL ingestion slice adds migration `007_url_ingestion.sql`, Worker `POST /files/url`,
-  shared URL source metadata types, and desktop URL import UI. The user applied the migration in
-  Supabase on 2026-05-08, reloaded PostgREST schema, and live API smoke passed against the local
-  Worker.
-- Current implementation slice adds Apple Notes-style navigation, single digest wiki output,
-  current-file Architect popover context, soft delete/Recently Deleted storage and routes, and
-  one-way Notion/Apple Notes sync through migration `008_sync_and_deleted.sql`.
-- Daily-driver polish slice adds a softer Mac-style dark theme, calmer reader/graph/chat surfaces,
-  compact processing state, and desktop export v1 for non-deleted vault originals plus an
-  `openbrain-export.json` manifest.
+- Product state: OpenBrain is now a single-user daily-driver candidate with Apple Notes-style
+  navigation, soft-dark UI, Markdown editing, URL/PDF/YouTube ingestion, Notion sync, Apple Notes
+  export-folder sync, one visible wiki digest per source, current-note Architect popover context,
+  Graph digest nodes, soft delete/Recently Deleted, and desktop export v1.
+- Notion sync was user-confirmed working on 2026-05-09 and should not be treated as a blocker.
+- The next work should be manual smoke and polish, not new schema or connector expansion, unless
+  smoke finds a concrete blocker.
 
 ## Completed
 

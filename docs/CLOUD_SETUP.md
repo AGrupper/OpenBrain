@@ -54,6 +54,18 @@ Visual Studio Installer, then confirm `cl /?` works in a new terminal.
    - `infra/supabase/migrations/001_initial.sql`
    - `infra/supabase/migrations/002_functions.sql`
    - `infra/supabase/migrations/003_architect.sql`
+   - `infra/supabase/migrations/004_folders.sql`
+   - `infra/supabase/migrations/005_vector_search.sql`
+   - `infra/supabase/migrations/006_wiki.sql`
+   - `infra/supabase/migrations/007_url_ingestion.sql`
+   - `infra/supabase/migrations/008_sync_and_deleted.sql`
+
+After manual SQL changes, run this in Supabase SQL Editor or restart the local Worker so PostgREST
+sees the new schema:
+
+```sql
+notify pgrst, 'reload schema';
+```
 
 ## Step 4: Auth Token
 
@@ -73,13 +85,12 @@ npm install
 npx wrangler secret put SUPABASE_URL
 npx wrangler secret put SUPABASE_SERVICE_KEY
 npx wrangler secret put OPENBRAIN_AUTH_TOKEN
-npx wrangler secret put OPENAI_API_KEY
-npx wrangler secret put ARCHITECT_MODEL
 npm run deploy
 ```
 
-`OPENAI_API_KEY` and `ARCHITECT_MODEL` are server-side Architect secrets. They must not be exposed to
-the desktop app.
+Provider keys and sync tokens are server-side only. Add the provider secrets used by your configured
+local/deployed Worker, such as embedding/model provider keys and optional `NOTION_API_KEY`; never
+expose them to the desktop app.
 
 Telegram secrets are optional and only needed if you keep Telegram approval notifications:
 
@@ -98,7 +109,8 @@ npm install
 npm run tauri:dev
 ```
 
-The desktop app should open with manual file import. There is no folder sync in v1.
+The desktop app should open with Notes, Graph, Review, Architect, Settings, import controls, and the
+soft-dark daily workspace. There is no folder sync in v1.
 
 ## Step 7: The Architect Jobs
 
@@ -110,18 +122,22 @@ npm run link
 npm run tag
 ```
 
-Run these jobs from your scheduler of choice. They are OpenBrain jobs, not OpenClaw agents.
+Run these jobs from your scheduler of choice when using the standalone agent path. The Worker also
+has scheduled/background paths for local deterministic processing. These are OpenBrain jobs, not
+OpenClaw agents.
 
 ## Smoke Tests
 
-| Phase          | Test                                                               |
-| -------------- | ------------------------------------------------------------------ |
-| Import         | Add a `.md` file from the desktop app and confirm it appears       |
-| Search         | Search for text from the imported file                             |
-| Architect jobs | Run `npm run link` and `npm run tag` in `services/architect-agent` |
-| Review         | Confirm pending suggestions appear in the Review Inbox             |
-| Graph          | Approve a link and confirm it appears in Graph view                |
-| Chat           | Ask The Architect about imported content and confirm citations     |
+| Phase      | Test                                                                     |
+| ---------- | ------------------------------------------------------------------------ |
+| Notes      | Create, edit, save, rename, soft delete, restore, and permanently delete |
+| Import     | Add a local file, webpage URL, PDF, YouTube URL, and Apple Notes export  |
+| Sync       | Run Notion sync and confirm imported pages appear                        |
+| Processing | Confirm imports resolve to text/no-text/duplicate/failed/queued states   |
+| Search     | Search raw note content and wiki digest content                          |
+| Graph      | Confirm one digest node per processed source by default                  |
+| Architect  | Ask about the current note and confirm source citations                  |
+| Export     | Export the vault and inspect originals plus `openbrain-export.json`      |
 
 ## Cost Estimate
 
