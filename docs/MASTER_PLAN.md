@@ -216,7 +216,8 @@ editing implementation files for this milestone.
 
 - Search across raw files, PARA folders, metadata, chunks, and wiki pages.
 - Done: Architect Chat retrieves from raw file search plus matching draft/published wiki pages, while
-  persisting the underlying source file for wiki-backed chat citations.
+  persisting the underlying source file for wiki-backed chat citations. Chat citations now visibly
+  distinguish wiki sources from raw file sources in the desktop UI.
 - Answers cite sources and refuse unsupported claims.
 - Reader shows related raw files and related wiki nodes.
 

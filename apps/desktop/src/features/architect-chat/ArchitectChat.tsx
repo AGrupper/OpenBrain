@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { ArchitectChatMessage, VaultFile } from "@openbrain/shared";
+import type { ArchitectChatMessage, ArchitectChatSource, VaultFile } from "@openbrain/shared";
 import { api } from "../../shared/api/api";
 
 interface Props {
@@ -76,21 +76,31 @@ export function ArchitectChat({ onSelectFile }: Props) {
             <div style={styles.messageText}>{entry.text}</div>
             {entry.sources && entry.sources.length > 0 && (
               <div style={styles.sources}>
-                {entry.sources.map((source) => (
-                  <button
-                    key={`${source.file_id}-${source.path}`}
-                    style={styles.sourceButton}
-                    onClick={() =>
-                      api.files
-                        .get(source.file_id)
-                        .then(onSelectFile)
-                        .catch(() => {})
-                    }
-                    title={source.snippet}
-                  >
-                    {source.path}
-                  </button>
-                ))}
+                {entry.sources.map((source) => {
+                  const title = source.title ?? source.path;
+                  const path = source.path !== title ? source.path : null;
+
+                  return (
+                    <button
+                      key={`${source.source_kind ?? "file"}-${source.wiki_node_id ?? source.file_id}-${source.path}`}
+                      style={styles.sourceButton}
+                      onClick={() =>
+                        api.files
+                          .get(source.file_id)
+                          .then(onSelectFile)
+                          .catch(() => {})
+                      }
+                      title={source.snippet}
+                    >
+                      <span style={styles.sourceHeader}>
+                        <span style={styles.sourceKind}>{formatSourceKind(source)}</span>
+                        <span style={styles.sourceTitle}>{title}</span>
+                      </span>
+                      {path && <span style={styles.sourcePath}>{path}</span>}
+                      <span style={styles.sourceSnippet}>{source.snippet}</span>
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -118,6 +128,14 @@ export function ArchitectChat({ onSelectFile }: Props) {
       </form>
     </div>
   );
+}
+
+function formatSourceKind(source: ArchitectChatSource): string {
+  if (source.source_kind === "wiki") {
+    return source.wiki_node_kind ? `Wiki ${source.wiki_node_kind}` : "Wiki";
+  }
+
+  return "File";
 }
 
 const styles: Record<string, React.CSSProperties> = {
@@ -185,22 +203,60 @@ const styles: Record<string, React.CSSProperties> = {
   },
   sources: {
     display: "flex",
-    flexWrap: "wrap",
+    flexDirection: "column",
     gap: "var(--spacing-2)",
     marginTop: "var(--spacing-3)",
   },
   sourceButton: {
-    border: "1px solid var(--border-highlight)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "stretch",
+    gap: 4,
+    textAlign: "left",
+    border: "1px solid var(--border-color)",
     background: "var(--bg-base)",
-    color: "var(--accent-primary)",
-    borderRadius: "var(--radius-sm)",
-    padding: "4px 8px",
+    color: "var(--text-primary)",
+    borderRadius: "var(--radius-md)",
+    padding: "8px 10px",
     cursor: "pointer",
-    fontSize: 12,
-    maxWidth: 320,
+    fontSize: 13,
+    maxWidth: 620,
+  },
+  sourceHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "var(--spacing-2)",
+    minWidth: 0,
+  },
+  sourceKind: {
+    flex: "0 0 auto",
+    border: "1px solid rgba(96, 165, 250, 0.45)",
+    borderRadius: "var(--radius-sm)",
+    background: "rgba(37, 99, 235, 0.14)",
+    color: "var(--accent-primary)",
+    padding: "2px 6px",
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: "uppercase",
+  },
+  sourceTitle: {
+    minWidth: 0,
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+    fontWeight: 700,
+  },
+  sourcePath: {
+    color: "var(--text-muted)",
+    fontSize: 12,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  sourceSnippet: {
+    color: "var(--text-secondary)",
+    fontSize: 12,
+    lineHeight: 1.45,
   },
   composer: {
     display: "flex",

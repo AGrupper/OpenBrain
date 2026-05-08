@@ -225,6 +225,9 @@ Last verified on 2026-05-05 after the draft-visible wiki implementation:
   returned five sources headed by wiki claim/synthesis nodes. `npm.cmd run typecheck`,
   `npm.cmd run lint`, `npm.cmd run format:check`, and the outside-sandbox focused Architect route
   test passed after this fix with 10 tests.
+- The desktop Architect Chat source list now renders source provenance visibly: wiki/file label,
+  wiki node kind when present, source title/path, and the supporting snippet. Selecting a source
+  still opens the underlying raw file in the reader.
 
 Earlier verified on 2026-05-05 after the no-op Architect suggestion fix:
 
