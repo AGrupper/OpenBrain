@@ -47,7 +47,7 @@ session so the next session can start from repo truth instead of chat history.
   Worker.
 - Current implementation slice adds Apple Notes-style navigation, single digest wiki output,
   current-file Architect popover context, soft delete/Recently Deleted storage and routes, and
-  one-way Notion/Apple Notes sync scaffolding through migration `008_sync_and_deleted.sql`.
+  one-way Notion/Apple Notes sync through migration `008_sync_and_deleted.sql`.
 - Daily-driver polish slice adds a softer Mac-style dark theme, calmer reader/graph/chat surfaces,
   compact processing state, and desktop export v1 for non-deleted vault originals plus an
   `openbrain-export.json` manifest.
@@ -182,6 +182,8 @@ session so the next session can start from repo truth instead of chat history.
 - File delete is now soft delete by default. Restore and permanent delete routes were added.
 - Worker `/sync/notion/run` pulls readable Notion pages with `NOTION_API_KEY` from Worker env and
   imports them one-way as OpenBrain source files.
+- Notion sync was user-confirmed working on 2026-05-09, so it is no longer tracked as a known
+  blocker.
 - Worker `/sync/apple-notes/files` imports desktop-selected Apple Notes export files (`.md`, `.txt`,
   `.html`, `.pdf`) one-way as OpenBrain source files.
 - Sync imports first try to match existing user folders by folder-name tokens in the title, URL/path,
@@ -283,6 +285,16 @@ Last verified on 2026-05-05 after the draft-visible wiki implementation:
     Windows sandbox `spawn EPERM`.
   - `npm.cmd -w apps/desktop run build` passed outside the sandbox after the known Vite/esbuild
     `spawn EPERM`; it still emits the existing large-chunk warning.
+- On 2026-05-09 after removing stale Notion blocker language from the plan, the repo was clean and
+  synced with `origin/master`, and the required verification passed again:
+  - `npm.cmd run typecheck`
+  - `npm.cmd run lint`
+  - `npm.cmd run format:check`
+  - `npm.cmd test` passed outside the sandbox with 12 test files and 122 tests.
+  - `npm.cmd -w apps/desktop run build` passed outside the sandbox; it still emits the existing
+    large-chunk warning.
+  - `cargo fmt --manifest-path apps/desktop/src-tauri/Cargo.toml -- --check`
+  - `cargo test --manifest-path apps/desktop/src-tauri/Cargo.toml` passed with 6 tests.
 
 Earlier verified on 2026-05-05 after the no-op Architect suggestion fix:
 
@@ -402,12 +414,11 @@ Immediate targets:
    - Confirm the floating Architect popover answers with selected-file context.
    - Confirm soft delete, restore, and permanent delete behavior.
    - Export the vault and confirm originals plus `openbrain-export.json` are readable.
-2. Configure or debug sync:
-   - Add `NOTION_API_KEY` only to `services/worker/.dev.vars` or deployed Worker env.
-   - Use the Notion sync button after the Worker restarts with the key.
-   - Use the Apple Notes sync button with an exported local notes folder.
-   - Notion sync is still a known bug in the desktop/runtime flow and should not block the core
-     note-taking smoke.
+2. Smoke capture and backup flows:
+   - Import a local file, webpage URL, PDF URL/file, YouTube URL, and Apple Notes export folder.
+   - Confirm each import resolves to imported with text, imported without text, duplicate, failed
+     with reason, or queued for processing.
+   - Export the vault and inspect originals plus `openbrain-export.json` after restart.
 3. Review or clean remaining pending suggestions:
    - Reject the stale no-op `manual-smoke.md -> Resources/SmokeManual` folder card if it remains
      visible.

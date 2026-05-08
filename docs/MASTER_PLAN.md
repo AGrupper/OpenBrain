@@ -193,15 +193,16 @@ The graph wiki answers: "What does OpenBrain understand?"
 - Done: PDF URL and upload ingestion now attempts safe local extraction without a PDF worker. Scanned,
   encrypted, image-only, or unsupported PDFs still fall back to honest `no_text` state.
 - Next implementation step: either improve PDF coverage with an extraction service/OCR decision, or
-  design the Notion connector if Notion becomes the priority.
+  polish import result/status UX from manual smoke findings.
 - Done: migration `008_sync_and_deleted.sql` adds soft-delete fields, expanded source types, and
   `sync_sources`/`sync_items` for one-way external sync.
 - Done: Worker sync v1 imports Notion pages through `NOTION_API_KEY` and Apple Notes export-folder
   files through the desktop app. Both are one-way pull paths and trigger existing processing flags.
+- Done: Notion sync was user-confirmed working on 2026-05-09.
 - Done: synced Notion and Apple Notes items use a conservative existing-folder matcher before falling
   back to `Resources/Notion` or `Resources/Apple Notes`.
-- Next manual step: apply `008_sync_and_deleted.sql`, reload PostgREST schema, restart Worker, then
-  smoke soft delete, Notion sync, Apple Notes folder sync, and one-digest Graph output.
+- Next manual step: smoke soft delete/restore/permanent delete, Apple Notes folder sync, vault export,
+  and one-digest Graph output in the refreshed desktop.
 - Accept local files and arbitrary allowed URLs.
 - Store metadata, extracted text/transcripts, summaries, and processing status.
 - Support webpages, PDFs, images, audio, video, and YouTube where extraction is allowed.
