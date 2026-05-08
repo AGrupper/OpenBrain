@@ -25,11 +25,15 @@ export async function handleWiki(request: Request, env: Env, url: URL): Promise<
     .filter(Boolean);
   const resource = segments[0];
   const id = segments[1];
+  const sub = segments[2];
 
   try {
     if (method === "GET" && resource === "graph" && !id) return handleWikiGraph(env);
     if (method === "GET" && resource === "nodes" && id) return handleWikiNodeDetail(env, id);
-    if (resource === "graph" || resource === "nodes") {
+    if (method === "GET" && resource === "files" && id && sub === "nodes") {
+      return handleWikiNodesForFile(env, id);
+    }
+    if (resource === "graph" || resource === "nodes" || resource === "files") {
       return new Response("Method not allowed", { status: 405 });
     }
     return new Response("Not found", { status: 404 });
@@ -37,6 +41,19 @@ export async function handleWiki(request: Request, env: Env, url: URL): Promise<
     console.error(err);
     return new Response(String(err), { status: 500 });
   }
+}
+
+async function handleWikiNodesForFile(env: Env, fileId: string): Promise<Response> {
+  const nodes = (await db(env).query("wiki_nodes", {
+    source_file_id: `eq.${fileId}`,
+    status: VISIBLE_STATUSES,
+    kind: "neq.source",
+    select: "*",
+    order: "updated_at.desc",
+    limit: "50",
+  })) as WikiNode[];
+
+  return Response.json(nodes);
 }
 
 async function handleWikiGraph(env: Env): Promise<Response> {

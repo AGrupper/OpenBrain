@@ -9,6 +9,7 @@ import {
   paraRootDescription,
   type VaultFile,
   type VaultFolder,
+  type WikiNode,
 } from "@openbrain/shared";
 import { api } from "../../shared/api/api";
 
@@ -39,6 +40,7 @@ export function ListView({
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(PARA_ROOTS));
   const [links, setLinks] = useState<Link[]>([]);
+  const [relatedWikiNodes, setRelatedWikiNodes] = useState<WikiNode[]>([]);
   const [preview, setPreview] = useState<string | null>(null);
   const [newFolderName, setNewFolderName] = useState("");
   const [newNoteName, setNewNoteName] = useState("Untitled.md");
@@ -71,6 +73,7 @@ export function ListView({
   useEffect(() => {
     if (!selectedFile) {
       setLinks([]);
+      setRelatedWikiNodes([]);
       setPreview(null);
       setEditing(false);
       setDraft("");
@@ -86,6 +89,10 @@ export function ListView({
       .linksForFile(selectedFile.id)
       .then(setLinks)
       .catch(() => setLinks([]));
+    api.wiki
+      .nodesForFile(selectedFile.id)
+      .then(setRelatedWikiNodes)
+      .catch(() => setRelatedWikiNodes([]));
 
     if (selectedFile.text_content) {
       setPreview(selectedFile.text_content);
@@ -422,6 +429,14 @@ export function ListView({
                 file type later.
               </div>
             )}
+            {relatedWikiNodes.length > 0 && (
+              <div style={styles.connections}>
+                <div style={styles.connectionsTitle}>Related wiki ({relatedWikiNodes.length})</div>
+                {relatedWikiNodes.map((node) => (
+                  <WikiNodeRow key={node.id} node={node} />
+                ))}
+              </div>
+            )}
             {links.length > 0 && (
               <div style={styles.connections}>
                 <div style={styles.connectionsTitle}>Connected files ({links.length})</div>
@@ -684,6 +699,16 @@ function ConnectionRow({
       <span style={styles.connLabel}>Link</span>
       <span style={styles.connReason}>{link.reason}</span>
       <span style={styles.connConf}>{Math.round(link.confidence * 100)}%</span>
+    </div>
+  );
+}
+
+function WikiNodeRow({ node }: { node: WikiNode }) {
+  return (
+    <div className="conn-row" style={styles.wikiNodeRow}>
+      <span style={styles.wikiNodeKind}>{node.kind}</span>
+      <span style={styles.wikiNodeTitle}>{node.title}</span>
+      <span style={styles.wikiNodeStatus}>{node.status}</span>
     </div>
   );
 }
@@ -1290,6 +1315,40 @@ const styles: Record<string, React.CSSProperties> = {
     background: "rgba(16, 185, 129, 0.1)",
     padding: "2px 6px",
     borderRadius: "var(--radius-sm)",
+  },
+  wikiNodeRow: {
+    display: "flex",
+    gap: "var(--spacing-3)",
+    padding: "var(--spacing-3) var(--spacing-4)",
+    borderRadius: "var(--radius-md)",
+    fontSize: 14,
+    marginBottom: "var(--spacing-2)",
+    background: "var(--bg-surface)",
+    border: "1px solid var(--border-color)",
+    boxShadow: "var(--shadow-sm)",
+    alignItems: "center",
+  },
+  wikiNodeKind: {
+    color: "var(--accent-primary)",
+    fontSize: 12,
+    fontWeight: 700,
+    background: "var(--bg-surface-active)",
+    padding: "2px 6px",
+    borderRadius: "var(--radius-sm)",
+    textTransform: "uppercase",
+  },
+  wikiNodeTitle: {
+    flex: 1,
+    color: "var(--text-secondary)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  wikiNodeStatus: {
+    color: "var(--text-muted)",
+    fontWeight: 600,
+    fontSize: 12,
+    textTransform: "uppercase",
   },
   placeholder: { color: "var(--text-muted)", textAlign: "center", marginTop: 100, fontSize: 15 },
 };

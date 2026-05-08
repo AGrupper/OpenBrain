@@ -232,6 +232,9 @@ Last verified on 2026-05-05 after the draft-visible wiki implementation:
   Wiki search results show a wiki/file label and wiki node kind in the desktop dropdown, then open
   the underlying source file in the reader. The focused Worker search route test passes with 7
   tests.
+- The raw file reader now fetches related visible non-source wiki nodes through
+  `GET /wiki/files/:id/nodes` and shows them alongside existing connected-file context. The focused
+  Worker wiki route test passes with 4 tests.
 
 Earlier verified on 2026-05-05 after the no-op Architect suggestion fix:
 

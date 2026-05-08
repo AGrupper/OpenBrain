@@ -220,7 +220,7 @@ editing implementation files for this milestone.
   persisting the underlying source file for wiki-backed chat citations. Chat citations now visibly
   distinguish wiki sources from raw file sources in the desktop UI.
 - Answers cite sources and refuse unsupported claims.
-- Reader shows related raw files and related wiki nodes.
+- Done: Reader shows related raw files and related non-source wiki nodes for the selected raw file.
 
 ### 10. Export, Delete, And Privacy
 

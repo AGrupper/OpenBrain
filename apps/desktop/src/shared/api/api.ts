@@ -7,6 +7,7 @@ import type {
   VaultFile,
   VaultFolder,
   WikiGraphResponse,
+  WikiNode,
   WikiNodeDetailResponse,
 } from "@openbrain/shared";
 
@@ -102,5 +103,6 @@ export const api = {
   wiki: {
     graph: () => get<WikiGraphResponse>("/wiki/graph"),
     node: (id: string) => get<WikiNodeDetailResponse>(`/wiki/nodes/${id}`),
+    nodesForFile: (id: string) => get<WikiNode[]>(`/wiki/files/${id}/nodes`),
   },
 };

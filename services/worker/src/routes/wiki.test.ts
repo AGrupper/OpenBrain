@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Env } from "../app";
-import type { WikiGraphResponse, WikiNodeDetailResponse } from "@openbrain/shared";
+import type { WikiGraphResponse, WikiNode, WikiNodeDetailResponse } from "@openbrain/shared";
 
 const mocks = vi.hoisted(() => ({
   query: vi.fn(),
@@ -161,5 +161,36 @@ describe("handleWiki", () => {
     const res = await handleWiki(req, makeEnv(), new URL(req.url));
 
     expect(res.status).toBe(404);
+  });
+
+  it("returns visible non-source wiki nodes for a raw source file", async () => {
+    mocks.query.mockResolvedValue([
+      {
+        id: "node-1",
+        kind: "claim",
+        title: "Source claim",
+        slug: "source-claim",
+        status: "draft",
+        source_file_id: "file-1",
+        created_at: "now",
+        updated_at: "now",
+      },
+    ]);
+
+    const req = new Request("https://api.openbrain.dev/wiki/files/file-1/nodes");
+    const res = await handleWiki(req, makeEnv(), new URL(req.url));
+    const body = (await res.json()) as WikiNode[];
+
+    expect(res.status).toBe(200);
+    expect(body).toHaveLength(1);
+    expect(body[0]).toMatchObject({ id: "node-1", kind: "claim" });
+    expect(mocks.query).toHaveBeenCalledWith("wiki_nodes", {
+      source_file_id: "eq.file-1",
+      status: "in.(draft,published)",
+      kind: "neq.source",
+      select: "*",
+      order: "updated_at.desc",
+      limit: "50",
+    });
   });
 });
