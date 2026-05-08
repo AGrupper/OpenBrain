@@ -212,6 +212,10 @@ export interface SearchResult {
   file: VaultFile;
   score: number;
   snippet: string;
+  result_kind?: "file" | "wiki";
+  title?: string;
+  wiki_node_id?: string | null;
+  wiki_node_kind?: WikiNodeKind;
 }
 
 export interface Correction {

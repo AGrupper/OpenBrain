@@ -165,4 +165,74 @@ describe("handleSearch", () => {
     expect(data.results[0].score).toBe(0.9);
     expect(data.results[0].snippet).toBe("...kitchen tools...");
   });
+
+  it("returns matching wiki pages with their underlying source file", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input) => {
+        const url = String(input);
+        if (url.includes("/rpc/search_files")) return new Response(JSON.stringify([]));
+        if (url.includes("/wiki_pages")) {
+          return new Response(
+            JSON.stringify([
+              {
+                id: "page-1",
+                title: "Draft citation synthesis",
+                content: "The wiki draft explains chunk citations from saved source text.",
+                wiki_nodes: {
+                  id: "node-1",
+                  kind: "synthesis",
+                  title: "Draft citation synthesis",
+                  status: "draft",
+                  source_file_id: "file-1",
+                },
+              },
+            ]),
+            { status: 200 },
+          );
+        }
+        if (url.includes("/files?") && url.includes("id=in.")) {
+          return new Response(
+            JSON.stringify([
+              {
+                id: "file-1",
+                path: "Resources/wiki-source.md",
+                size: 100,
+                sha256: "abc",
+                mime: "text/markdown",
+                updated_at: "2026-05-08",
+              },
+            ]),
+            { status: 200 },
+          );
+        }
+        return new Response(JSON.stringify([]), { status: 200 });
+      }),
+    );
+
+    const env = makeEnv();
+    const req = new Request("https://api.openbrain.dev/search?q=draft citations", {
+      method: "GET",
+    });
+    const res = await handleSearch(req, env, new URL(req.url));
+    const data = (await res.json()) as {
+      results: Array<{
+        result_kind: string;
+        title: string;
+        wiki_node_kind: string;
+        snippet: string;
+        file: { path: string };
+      }>;
+    };
+
+    expect(res.status).toBe(200);
+    expect(data.results).toHaveLength(1);
+    expect(data.results[0]).toMatchObject({
+      result_kind: "wiki",
+      title: "Draft citation synthesis",
+      wiki_node_kind: "synthesis",
+      file: { path: "Resources/wiki-source.md" },
+    });
+    expect(data.results[0].snippet).toContain("**draft**");
+  });
 });

@@ -94,7 +94,7 @@ export function SearchBar({ onSelect }: Props) {
         <div style={styles.dropdown}>
           {results.map((result) => (
             <ResultRow
-              key={result.file.id}
+              key={`${result.result_kind ?? "file"}-${result.wiki_node_id ?? result.file.id}`}
               result={result}
               onSelect={(file) => {
                 onSelect(file);
@@ -142,13 +142,26 @@ function ResultRow({
   result: SearchResult;
   onSelect: (file: VaultFile) => void;
 }) {
-  const name = result.file.path.split("/").pop() ?? result.file.path;
+  const name = result.title ?? result.file.path.split("/").pop() ?? result.file.path;
+  const path = result.title ? result.file.path : null;
   return (
     <div className="search-result" style={styles.resultRow} onClick={() => onSelect(result.file)}>
-      <div style={styles.resultName}>{name}</div>
+      <div style={styles.resultHeader}>
+        <span style={styles.resultKind}>{formatResultKind(result)}</span>
+        <span style={styles.resultName}>{name}</span>
+      </div>
+      {path && <div style={styles.resultPath}>{path}</div>}
       {result.snippet && <div style={styles.snippet}>{highlightSnippet(result.snippet)}</div>}
     </div>
   );
+}
+
+function formatResultKind(result: SearchResult): string {
+  if (result.result_kind === "wiki") {
+    return result.wiki_node_kind ? `Wiki ${result.wiki_node_kind}` : "Wiki";
+  }
+
+  return "File";
 }
 
 const styles: Record<string, React.CSSProperties> = {
@@ -208,11 +221,40 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: "pointer",
     borderBottom: "1px solid var(--border-color)",
   },
+  resultHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: "var(--spacing-2)",
+    minWidth: 0,
+    marginBottom: "var(--spacing-1)",
+  },
+  resultKind: {
+    flex: "0 0 auto",
+    border: "1px solid rgba(96, 165, 250, 0.45)",
+    borderRadius: "var(--radius-sm)",
+    background: "rgba(37, 99, 235, 0.14)",
+    color: "var(--accent-primary)",
+    padding: "2px 6px",
+    fontSize: 11,
+    fontWeight: 700,
+    textTransform: "uppercase",
+  },
   resultName: {
     fontSize: 14,
     fontWeight: 600,
-    marginBottom: "var(--spacing-1)",
     color: "var(--text-primary)",
+    minWidth: 0,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  resultPath: {
+    color: "var(--text-muted)",
+    fontSize: 12,
+    marginBottom: "var(--spacing-1)",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
   },
   snippet: { fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5 },
   showAll: {

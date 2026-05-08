@@ -228,6 +228,10 @@ Last verified on 2026-05-05 after the draft-visible wiki implementation:
 - The desktop Architect Chat source list now renders source provenance visibly: wiki/file label,
   wiki node kind when present, source title/path, and the supporting snippet. Selecting a source
   still opens the underlying raw file in the reader.
+- Search now includes matching draft/published wiki pages alongside raw full-text/path matches.
+  Wiki search results show a wiki/file label and wiki node kind in the desktop dropdown, then open
+  the underlying source file in the reader. The focused Worker search route test passes with 7
+  tests.
 
 Earlier verified on 2026-05-05 after the no-op Architect suggestion fix:
 
