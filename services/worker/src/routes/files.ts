@@ -191,6 +191,15 @@ function escapeMarkdown(text: string): string {
   return text.replaceAll("\\", "\\\\").replaceAll("[", "\\[").replaceAll("]", "\\]");
 }
 
+function urlFolderMatchingText(title: string, sourceUrl: string): string {
+  try {
+    const parsed = new URL(sourceUrl);
+    return `${title} ${parsed.hostname} ${decodeURIComponent(parsed.pathname)}`.toLowerCase();
+  } catch {
+    return title.toLowerCase();
+  }
+}
+
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
@@ -368,7 +377,7 @@ async function chooseUrlFolder(
     return DEFAULT_URL_FOLDER;
   }
 
-  const haystack = `${title} ${sourceUrl}`.toLowerCase();
+  const haystack = urlFolderMatchingText(title, sourceUrl);
   const candidates = folders
     .map((folder) => folder.path)
     .filter((path) => path && !["Projects", "Areas", "Resources", "Archive"].includes(path))

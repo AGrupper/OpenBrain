@@ -454,6 +454,38 @@ describe("handleFiles - POST /files/url", () => {
     });
   });
 
+  it("does not use URL query parameters for folder matching", async () => {
+    const fetchMock = makeUrlFetchMock({
+      folders: [{ path: "Resources/Web" }, { path: "smoke" }],
+      external: (calledUrl) =>
+        responseWithUrl(
+          "<html><head><title>Example Domain</title></head><body><p>Readable page text.</p></body></html>",
+          calledUrl,
+          { status: 200, headers: { "Content-Type": "text/html" } },
+        ),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const env = makeEnv();
+    const req = makeRequest("https://api.openbrain.dev/files/url", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: "https://example.com/?openbrain_smoke=1" }),
+    });
+
+    const res = await handleFiles(req, env, new URL(req.url));
+
+    expect(res.status).toBe(201);
+    const filesUpsert = fetchMock.mock.calls.find((call) =>
+      String(call[0]).endsWith("/rest/v1/files"),
+    );
+    expect(JSON.parse(String(filesUpsert?.[1]?.body))).toMatchObject({
+      path: "Resources/Web/Example Domain.md",
+      folder: "Resources/Web",
+      extraction_status: "extracted",
+      needs_wiki: true,
+    });
+  });
+
   it("imports a YouTube URL without marking wiki work as pending", async () => {
     const fetchMock = makeUrlFetchMock({
       external: (calledUrl) => {
