@@ -41,10 +41,10 @@ session so the next session can start from repo truth instead of chat history.
   (`Complete Markdown note workspace loop`) and committed the first safe Graph-First Architect Wiki
   slice locally as `23def5d` (`Add graph node detail panel`). No migrations were added; graph node
   details use existing raw files and approved links.
-- Current 2026-05-07 URL ingestion slice adds migration `007_url_ingestion.sql`, Worker
-  `POST /files/url`, shared URL source metadata types, and desktop URL import UI. The migration has
-  not been applied to Supabase yet; apply it manually before smoking URL imports against the live
-  local app.
+- Current URL ingestion slice adds migration `007_url_ingestion.sql`, Worker `POST /files/url`,
+  shared URL source metadata types, and desktop URL import UI. The user applied the migration in
+  Supabase on 2026-05-08, reloaded PostgREST schema, and live API smoke passed against the local
+  Worker.
 
 ## Completed
 
@@ -187,6 +187,16 @@ Last verified on 2026-05-05 after the draft-visible wiki implementation:
   `npm.cmd run format:check` passed. Focused Vitest for `services/worker/src/routes/files.test.ts`
   hit the known sandbox `spawn EPERM`, and the outside-sandbox rerun was blocked by the platform
   usage limit, so test execution still needs a later rerun.
+- On 2026-05-08 after applying `007_url_ingestion.sql`, live URL ingestion smoke passed:
+  - `GET /files?limit=1` reached the local Worker.
+  - Webpage import from `example.com` created a source note with `source_type=webpage`,
+    `extraction_status=extracted`, `needs_wiki=true`, then processing cleared `needs_wiki=false`.
+  - PDF import created a `source_type=pdf`, `extraction_status=no_text`, `needs_wiki=false` source.
+  - YouTube import created a `source_type=youtube`, `extraction_status=no_text`,
+    `needs_wiki=false` source.
+  - Private URL import returned 400 and duplicate URL import returned 409.
+  - Desktop-visible graph filtering still excludes `source` nodes; the imported webpage had three
+    visible wiki concepts and node detail returned citation/history data.
 
 Earlier verified on 2026-05-05 after the no-op Architect suggestion fix:
 
@@ -314,13 +324,9 @@ Immediate targets:
      suggested folder is actually correct.
    - Do not delete disposable smoke notes/folders unless the user explicitly approves cleanup.
 3. Continue Milestone 5 broad ingestion:
-   - Apply `infra/supabase/migrations/007_url_ingestion.sql` manually in Supabase and run
-     `notify pgrst, 'reload schema';` in the Supabase SQL editor.
-   - Restart Worker/Desktop cleanly, then smoke import one webpage, one PDF URL, and one YouTube URL.
-   - Confirm webpage imports can become wiki graph concepts after processing while PDF/YouTube
-     imports honestly show `No text extracted` and no wiki-pending badge.
    - Next implementation slice after URL smoke: PDF text extraction and YouTube transcript support,
      or Notion connector planning if the user prioritizes Notion.
+   - Leave the disposable URL smoke files in the vault unless the user explicitly approves cleanup.
 4. After publish, verify `git status -sb` before starting new work.
 
 ## Guardrails

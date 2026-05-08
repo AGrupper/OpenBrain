@@ -162,8 +162,12 @@ The graph wiki answers: "What does OpenBrain understand?"
   otherwise they fall back to `Resources/Web`.
 - Done: desktop List can add URLs from the import bar, shows source URL plus truthful extraction
   state, and opens source URLs in the system browser.
-- Next manual step: apply `infra/supabase/migrations/007_url_ingestion.sql` in Supabase, reload the
-  PostgREST schema, restart Worker/Desktop, and smoke webpage, PDF, and YouTube imports.
+- Done: applied `infra/supabase/migrations/007_url_ingestion.sql` in Supabase and smoked URL
+  ingestion against the local Worker on 2026-05-08. Webpage import generated wiki concepts with
+  citations, PDF/YouTube imports stayed honest `no_text` sources, private URLs were rejected, and
+  duplicate source URLs were rejected.
+- Next implementation step: add richer extraction for PDFs and YouTube transcripts, or design the
+  Notion connector if Notion becomes the priority.
 - Later: Notion access needs a separate authenticated connector/integration design, not the public
   URL ingestion route.
 - Accept local files and arbitrary allowed URLs.
