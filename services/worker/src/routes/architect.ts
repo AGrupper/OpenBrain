@@ -7,6 +7,7 @@ import type {
   ArchitectSuggestion,
   ArchitectSuggestionStatus,
   ArchitectSuggestionType,
+  WikiNodeKind,
 } from "@openbrain/shared";
 import {
   runLinker,
@@ -323,7 +324,33 @@ interface SearchRow {
   snippet: string;
 }
 
+interface WikiPageSearchRow {
+  id: string;
+  title: string;
+  content: string;
+  wiki_nodes?: {
+    id: string;
+    kind: WikiNodeKind;
+    title: string;
+    status: "draft" | "published" | "archived";
+    source_file_id?: string | null;
+  } | null;
+}
+
 async function retrieveVaultSources(
+  env: Env,
+  query: string,
+  limit: number,
+): Promise<ArchitectChatSource[]> {
+  const rawSources = await retrieveRawVaultSources(env, query, limit);
+  const wikiSources = await retrieveWikiPageSources(env, query, limit);
+
+  return [...rawSources, ...wikiSources]
+    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+    .slice(0, limit);
+}
+
+async function retrieveRawVaultSources(
   env: Env,
   query: string,
   limit: number,
@@ -398,7 +425,87 @@ function blendByRRF(fts: SearchRow[], vec: SearchRow[], limit: number): Architec
       path: row.path,
       snippet: ftsSnippet ?? row.snippet,
       score,
+      source_kind: "file",
     }));
+}
+
+async function retrieveWikiPageSources(
+  env: Env,
+  query: string,
+  limit: number,
+): Promise<ArchitectChatSource[]> {
+  const terms = tokenizeQuery(query);
+  if (!terms.length) return [];
+
+  let rows: WikiPageSearchRow[] = [];
+  try {
+    rows = (await db(env).query("wiki_pages", {
+      select: "id,title,content,wiki_nodes(id,kind,title,status,source_file_id)",
+      order: "updated_at.desc",
+      limit: "100",
+    })) as WikiPageSearchRow[];
+  } catch (err) {
+    console.error("[architect.chat] wiki page retrieval failed:", err);
+    return [];
+  }
+
+  const sources: ArchitectChatSource[] = [];
+  for (const row of rows) {
+    const node = row.wiki_nodes;
+    if (!node?.source_file_id || !["draft", "published"].includes(node.status)) continue;
+    const score = scoreWikiPage(row, terms, query);
+    if (score <= 0) continue;
+    sources.push({
+      file_id: node.source_file_id,
+      path: `Wiki: ${node.title}`,
+      title: row.title,
+      snippet: wikiSnippet(row.content, terms),
+      score: 0.02 + score / 100,
+      source_kind: "wiki" as const,
+      wiki_node_id: node.id,
+      wiki_node_kind: node.kind,
+    });
+  }
+
+  return sources.sort((a, b) => (b.score ?? 0) - (a.score ?? 0)).slice(0, limit);
+}
+
+function tokenizeQuery(query: string): string[] {
+  return Array.from(
+    new Set(
+      query
+        .toLowerCase()
+        .split(/[^a-z0-9\u0590-\u05ff]+/i)
+        .map((term) => term.trim())
+        .filter((term) => term.length >= 3),
+    ),
+  );
+}
+
+function scoreWikiPage(row: WikiPageSearchRow, terms: string[], query: string): number {
+  const title = row.title.toLowerCase();
+  const content = row.content.toLowerCase();
+  const phrase = query.toLowerCase().trim();
+  let score = phrase.length >= 3 && (title.includes(phrase) || content.includes(phrase)) ? 5 : 0;
+
+  for (const term of terms) {
+    if (title.includes(term)) score += 4;
+    if (content.includes(term)) score += 1;
+  }
+
+  return score;
+}
+
+function wikiSnippet(content: string, terms: string[]): string {
+  const normalized = content.replace(/\s+/g, " ").trim();
+  const lower = normalized.toLowerCase();
+  const firstMatch = terms
+    .map((term) => lower.indexOf(term))
+    .filter((index) => index >= 0)
+    .sort((a, b) => a - b)[0];
+  const start = firstMatch === undefined ? 0 : Math.max(0, firstMatch - 120);
+  const snippet = normalized.slice(start, start + 360).trim();
+  return start > 0 ? `...${snippet}` : snippet;
 }
 
 async function askArchitect(
@@ -406,6 +513,8 @@ async function askArchitect(
   message: string,
   sources: ArchitectChatSource[],
 ): Promise<string> {
+  if (isDeterministicArchitect(env)) return deterministicChatAnswer(sources);
+
   const context = sources
     .map((source, index) => `[${index + 1}] ${source.path}\n${source.snippet}`)
     .join("\n\n");
@@ -416,4 +525,19 @@ async function askArchitect(
   });
 
   return answer.trim() || "I do not know from the vault. The Architect returned an empty answer.";
+}
+
+function isDeterministicArchitect(env: Env): boolean {
+  return env.ARCHITECT_DETERMINISTIC === "true" || env.ARCHITECT_MODEL_PROVIDER === "deterministic";
+}
+
+function deterministicChatAnswer(sources: ArchitectChatSource[]): string {
+  const cited = sources
+    .slice(0, 3)
+    .map((source, index) => `${source.snippet} [${index + 1}]`)
+    .join("\n\n");
+  return (
+    cited ||
+    "I do not know from the vault. I could not find any vault sources that support an answer."
+  );
 }

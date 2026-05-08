@@ -107,6 +107,10 @@ export interface ArchitectChatSource {
   path: string;
   snippet: string;
   score?: number;
+  source_kind?: "file" | "wiki";
+  title?: string;
+  wiki_node_id?: string | null;
+  wiki_node_kind?: WikiNodeKind;
 }
 
 export interface ArchitectChatMessage {

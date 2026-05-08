@@ -217,6 +217,14 @@ Last verified on 2026-05-05 after the draft-visible wiki implementation:
   `Projects/OpenBrain/Example Domain.md` with `extraction_status=extracted`.
 - The desktop now performs a short quiet refresh window after imports and saves so processing badges
   can clear after background jobs without showing the full loading screen.
+- Architect Chat now retrieves from matching draft/published wiki pages in addition to raw file FTS
+  and vector search. Wiki-backed chat sources are returned as `source_kind=wiki` and persisted using
+  the wiki node's underlying source file ID so the existing chat-source schema still works.
+- Deterministic Architect Chat now answers directly from retrieved source snippets instead of calling
+  `askLLM`, which intentionally throws in deterministic mode. Live smoke against the local Worker
+  returned five sources headed by wiki claim/synthesis nodes. `npm.cmd run typecheck`,
+  `npm.cmd run lint`, `npm.cmd run format:check`, and the outside-sandbox focused Architect route
+  test passed after this fix with 10 tests.
 
 Earlier verified on 2026-05-05 after the no-op Architect suggestion fix:
 

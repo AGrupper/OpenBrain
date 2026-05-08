@@ -69,6 +69,7 @@ describe("handleArchitect - chat", () => {
   it("refuses when no vault sources support the question", async () => {
     const { calls } = recordFetch([
       () => new Response(JSON.stringify([]), { status: 200 }),
+      () => new Response(JSON.stringify([]), { status: 200 }),
       () => new Response(JSON.stringify([{ id: "session-1" }]), { status: 201 }),
       () => new Response(JSON.stringify([{ id: "message-user" }]), { status: 201 }),
       () => new Response(JSON.stringify([{ id: "message-answer" }]), { status: 201 }),
@@ -102,6 +103,7 @@ describe("handleArchitect - chat", () => {
           ]),
           { status: 200 },
         ),
+      () => new Response(JSON.stringify([]), { status: 200 }),
       () => new Response(JSON.stringify([{ id: "session-1" }]), { status: 201 }),
       () => new Response(JSON.stringify([{ id: "message-user" }]), { status: 201 }),
       () =>
@@ -142,6 +144,123 @@ describe("handleArchitect - chat", () => {
     expect(JSON.stringify(llmCall?.body)).toContain("OpenBrain uses The Architect");
   });
 
+  it("uses matching wiki pages as vault chat sources", async () => {
+    const { calls } = recordFetch([
+      () => new Response(JSON.stringify([]), { status: 200 }),
+      () =>
+        new Response(
+          JSON.stringify([
+            {
+              id: "page-1",
+              title: "OpenBrain synthesis",
+              content: "The Architect Wiki says OpenBrain keeps draft claims cited to chunks.",
+              wiki_nodes: {
+                id: "wiki-1",
+                kind: "synthesis",
+                title: "OpenBrain synthesis",
+                status: "draft",
+                source_file_id: "file-source-1",
+              },
+            },
+          ]),
+          { status: 200 },
+        ),
+      () => new Response(JSON.stringify([{ id: "session-1" }]), { status: 201 }),
+      () => new Response(JSON.stringify([{ id: "message-user" }]), { status: 201 }),
+      () =>
+        new Response(
+          JSON.stringify({
+            choices: [
+              { message: { content: "OpenBrain keeps draft claims cited to chunks. [1]" } },
+            ],
+          }),
+          { status: 200 },
+        ),
+      () => new Response(JSON.stringify([{ id: "message-answer" }]), { status: 201 }),
+      () => new Response(JSON.stringify([{ id: "source-1" }]), { status: 201 }),
+    ]);
+
+    const req = new Request("https://api.openbrain.dev/architect/chat", {
+      method: "POST",
+      body: JSON.stringify({ message: "How does OpenBrain cite draft claims?" }),
+    });
+
+    const res = await handleArchitect(req, makeEnv(), new URL(req.url));
+    const body = (await res.json()) as {
+      sources: Array<{
+        file_id: string;
+        path: string;
+        source_kind: string;
+        wiki_node_id: string;
+        wiki_node_kind: string;
+      }>;
+    };
+
+    expect(res.status).toBe(200);
+    expect(body.sources).toHaveLength(1);
+    expect(body.sources[0]).toMatchObject({
+      file_id: "file-source-1",
+      path: "Wiki: OpenBrain synthesis",
+      source_kind: "wiki",
+      wiki_node_id: "wiki-1",
+      wiki_node_kind: "synthesis",
+    });
+
+    const llmCall = calls.find((call) => call.url.includes("api.openai.com"));
+    expect(JSON.stringify(llmCall?.body)).toContain("Wiki: OpenBrain synthesis");
+    expect(
+      calls.some(
+        (call) =>
+          call.url.includes("/architect_chat_message_sources") &&
+          JSON.stringify(call.body).includes("file-source-1"),
+      ),
+    ).toBe(true);
+  });
+
+  it("answers deterministically from retrieved sources without calling the LLM", async () => {
+    const { calls } = recordFetch([
+      () =>
+        new Response(
+          JSON.stringify([
+            {
+              id: "file-1",
+              path: "Resources/source.md",
+              rank: 0.9,
+              snippet: "Deterministic chat should cite this source.",
+            },
+          ]),
+          { status: 200 },
+        ),
+      () => new Response(JSON.stringify([]), { status: 200 }),
+      () => new Response(JSON.stringify([]), { status: 200 }),
+      () => new Response(JSON.stringify([{ id: "session-1" }]), { status: 201 }),
+      () => new Response(JSON.stringify([{ id: "message-user" }]), { status: 201 }),
+      () => new Response(JSON.stringify([{ id: "message-answer" }]), { status: 201 }),
+      () => new Response(JSON.stringify([{ id: "source-1" }]), { status: 201 }),
+    ]);
+
+    const req = new Request("https://api.openbrain.dev/architect/chat", {
+      method: "POST",
+      body: JSON.stringify({ message: "deterministic chat" }),
+    });
+
+    const res = await handleArchitect(
+      req,
+      makeEnv({
+        ARCHITECT_DETERMINISTIC: "true",
+        ARCHITECT_MODEL_PROVIDER: "deterministic",
+        EMBEDDING_PROVIDER: "deterministic",
+      }),
+      new URL(req.url),
+    );
+    const body = (await res.json()) as { answer: string; sources: Array<{ file_id: string }> };
+
+    expect(res.status).toBe(200);
+    expect(body.answer).toContain("Deterministic chat should cite this source. [1]");
+    expect(body.sources[0].file_id).toBe("file-1");
+    expect(calls.some((call) => call.url.includes("api.openai.com"))).toBe(false);
+  });
+
   it("returns a vector-only hit when FTS finds nothing", async () => {
     const { calls } = recordFetch([
       // FTS RPC: empty
@@ -159,6 +278,7 @@ describe("handleArchitect - chat", () => {
           ]),
           { status: 200 },
         ),
+      () => new Response(JSON.stringify([]), { status: 200 }),
       () => new Response(JSON.stringify([{ id: "session-1" }]), { status: 201 }),
       () => new Response(JSON.stringify([{ id: "message-user" }]), { status: 201 }),
       () =>
@@ -216,6 +336,7 @@ describe("handleArchitect - chat", () => {
           ]),
           { status: 200 },
         ),
+      () => new Response(JSON.stringify([]), { status: 200 }),
       () => new Response(JSON.stringify([{ id: "session-1" }]), { status: 201 }),
       () => new Response(JSON.stringify([{ id: "message-user" }]), { status: 201 }),
       () =>
@@ -268,6 +389,7 @@ describe("handleArchitect - chat", () => {
           ]),
           { status: 200 },
         ),
+      () => new Response(JSON.stringify([]), { status: 200 }),
       () => new Response(JSON.stringify([{ id: "session-1" }]), { status: 201 }),
       () => new Response(JSON.stringify([{ id: "message-user" }]), { status: 201 }),
       () =>

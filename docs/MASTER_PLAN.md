@@ -215,7 +215,8 @@ editing implementation files for this milestone.
 ### 9. Search, Chat, And Reader Quality
 
 - Search across raw files, PARA folders, metadata, chunks, and wiki pages.
-- Chat retrieves from both raw sources and compiled wiki pages.
+- Done: Architect Chat retrieves from raw file search plus matching draft/published wiki pages, while
+  persisting the underlying source file for wiki-backed chat citations.
 - Answers cite sources and refuse unsupported claims.
 - Reader shows related raw files and related wiki nodes.
 
